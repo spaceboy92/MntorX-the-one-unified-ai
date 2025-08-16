@@ -140,12 +140,13 @@
   <script type="importmap">
 {
   "imports": {
-    "react/": "https://esm.sh/react@^19.1.0/",
-    "react": "https://esm.sh/react@^19.1.0",
+    "react": "https://esm.sh/react@18.2.0",
+    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
     "@google/genai": "https://esm.sh/@google/genai@^1.8.0",
-    "react-dom/": "https://esm.sh/react-dom@^19.1.0/",
     "react-virtualized-auto-sizer": "https://esm.sh/react-virtualized-auto-sizer@^1.0.24",
-    "react-window": "https://esm.sh/react-window@^1.8.10"
+    "react-window": "https://esm.sh/react-window@^1.8.10",
+    "react/": "https://esm.sh/react@18.2.0/",
+    "react-dom/": "https://esm.sh/react-dom@18.2.0/"
   }
 }
 </script>
@@ -153,6 +154,6 @@
   <body>
     <div class="animated-bg"></div>
     <div id="root" class="relative z-10"></div>
-    <script type="text/babel" data-type="module" src="./index.tsx"></script>
+    <script type="text/babel" data-presets="typescript,react" data-type="module" src="./index.tsx"></script>
   </body>
 </html>
