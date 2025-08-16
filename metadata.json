@@ -1,0 +1,8 @@
+{
+  "name": "MentorX — Your Personal AI Mentor",
+  "description": "MentorX is your personal AI mentor, helping you learn, code, and create. It's a powerful and adaptive partner for developers, students, and thinkers.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "prompt": ""
+}
