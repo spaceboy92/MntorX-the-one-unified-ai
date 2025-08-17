@@ -1,12 +1,57 @@
-import { GoogleGenAI, GenerateContentParameters, Part, Tool, Type, Content } from "@google/genai";
+import { GoogleGenAI, GenerateContentParameters, Part, Tool, Type, Content, GenerateContentResponse } from "@google/genai";
 import { ChatMessage, Persona, TaskStep } from "../types";
 
-// Ensure the API key is available from environment variables
-if (!process.env.API_KEY) {
-  throw new Error("API_KEY environment variable not set");
+let ai: GoogleGenAI | null = null;
+let initError: string | null = null;
+
+/**
+ * Initializes the GoogleGenAI client instance.
+ * This should be called once when the application starts.
+ */
+export function initializeAiClient() {
+    // Prevent re-initialization
+    if (ai || initError) {
+        return;
+    }
+
+    const apiKey = process.env.API_KEY;
+
+    if (!apiKey || apiKey.includes("YOUR_")) {
+        initError = "Gemini API key is not configured. Please set the API_KEY environment variable.";
+        console.error(initError);
+        return;
+    }
+  
+    try {
+      ai = new GoogleGenAI({ apiKey });
+    } catch(e) {
+      initError = e instanceof Error ? e.message : "An unknown error occurred during AI client initialization.";
+      console.error("Error initializing GoogleGenAI:", e);
+      ai = null;
+    }
 }
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+/**
+ * Returns any error that occurred during client initialization.
+ * @returns {string | null} The error message, or null if initialization was successful.
+ */
+export function getAiInitializationError(): string | null {
+    return initError;
+}
+
+
+/**
+ * Returns the initialized GoogleGenAI client instance.
+ * Throws an error if the client is not initialized, which should be caught by the calling function.
+ * @returns {GoogleGenAI} The initialized client.
+ */
+function getAiClient(): GoogleGenAI {
+  if (!ai) {
+    throw new Error(initError || "Gemini API client is not initialized.");
+  }
+  return ai;
+}
+
 
 const WORKSPACE_TOOLS: Tool = {
   functionDeclarations: [
@@ -191,7 +236,7 @@ export const streamMentorXResponse = (
         params.config!.tools = toolsToUse;
     }
 
-    return ai.models.generateContentStream(params);
+    return getAiClient().models.generateContentStream(params);
 
   } catch (error) {
     console.error("Error preparing stream from Gemini API:", error);
@@ -202,7 +247,7 @@ export const streamMentorXResponse = (
 
 export const generateMentorXImage = async (prompt: string, aspectRatio: string = '1:1', numberOfImages: number = 1): Promise<string[]> => {
   try {
-    const response = await ai.models.generateImages({
+    const response = await getAiClient().models.generateImages({
       model: 'imagen-3.0-generate-002',
       prompt: prompt,
       config: {
@@ -236,7 +281,7 @@ Respond ONLY with the new prompt text. Do not add any conversational filler or e
     const textPart = { text: `Modification request: "${modificationPrompt}"` };
 
     try {
-        const response = await ai.models.generateContent({
+        const response = await getAiClient().models.generateContent({
             model: 'gemini-2.5-flash',
             contents: { parts: [imagePart, textPart] },
             config: {
@@ -258,7 +303,7 @@ export const classifyPromptIntent = async (prompt: string): Promise<'chat' | 'im
 Respond ONLY with the JSON object.`;
 
     try {
-        const response = await ai.models.generateContent({
+        const response = await getAiClient().models.generateContent({
             model: 'gemini-2.5-flash',
             contents: `User prompt: "${prompt}"`,
             config: {
@@ -300,7 +345,7 @@ IMPORTANT: Respond ONLY with the complete, modified code inside a single markdow
 ${code}
 \`\`\``;
     try {
-        const response = await ai.models.generateContent({
+        const response = await getAiClient().models.generateContent({
             model: 'gemini-2.5-flash',
             contents: prompt,
         });
@@ -320,7 +365,7 @@ export const getWorkspaceAnalysis = async (fileList: string[]): Promise<string[]
     const prompt = `You are a senior software architect. Given this list of files in a project: [${fileList.join(', ')}], provide 3 actionable, high-level suggestions for improvement (e.g., "Refactor player.js to use a state machine", "Add unit tests for utils.js", "Combine CSS into a single stylesheet").`;
 
     try {
-        const response = await ai.models.generateContent({
+        const response = await getAiClient().models.generateContent({
             model: 'gemini-2.5-flash',
             contents: prompt,
             config: {
@@ -367,7 +412,7 @@ Example: If the user says "create an html file", your response should be:
 `;
 
     try {
-        const response = await ai.models.generateContent({
+        const response = await getAiClient().models.generateContent({
             model: 'gemini-2.5-flash',
             contents: prompt,
             config: {
@@ -423,7 +468,7 @@ export const generateAiWidget = async (prompt: string): Promise<string> => {
     User Prompt: "${prompt}"
     `;
     try {
-        const response = await ai.models.generateContent({
+        const response = await getAiClient().models.generateContent({
             model: 'gemini-2.5-flash',
             contents: fullPrompt,
         });

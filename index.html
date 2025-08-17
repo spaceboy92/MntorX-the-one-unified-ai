@@ -137,6 +137,13 @@
           100% { background-position: 0% 50%; }
       }
     </style>
+  <script>
+    // Polyfill for process.env to support environment variables in a browser context.
+    // This allows the use of a standard, secure method for handling API keys.
+    if (typeof window.process === 'undefined') {
+      window.process = { env: {} };
+    }
+  </script>
   <script type="importmap">
 {
   "imports": {
@@ -146,7 +153,11 @@
     "react-virtualized-auto-sizer": "https://esm.sh/react-virtualized-auto-sizer@^1.0.24",
     "react-window": "https://esm.sh/react-window@^1.8.10",
     "react/": "https://esm.sh/react@18.2.0/",
-    "react-dom/": "https://esm.sh/react-dom@18.2.0/"
+    "react-dom/": "https://esm.sh/react-dom@18.2.0/",
+    "firebase/app": "https://esm.sh/firebase@10.12.2/app",
+    "firebase/auth": "https://esm.sh/firebase@10.12.2/auth",
+    "firebase/firestore": "https://esm.sh/firebase@10.12.2/firestore",
+    "firebase/": "https://esm.sh/firebase@^12.1.0/"
   }
 }
 </script>
@@ -154,6 +165,15 @@
   <body>
     <div class="animated-bg"></div>
     <div id="root" class="relative z-10"></div>
+    <script src="./config.js"></script>
+    <script>
+      // For local development convenience, this script can inject the API key
+      // from config.js into the process.env polyfill.
+      // In a production environment, the API_KEY should be set directly by the hosting provider.
+      if (window.mentorx_config && window.mentorx_config.API_KEY) {
+         window.process.env.API_KEY = window.mentorx_config.API_KEY;
+      }
+    </script>
     <script type="text/babel" data-presets="typescript,react" data-type="module" src="./index.tsx"></script>
   </body>
 </html>

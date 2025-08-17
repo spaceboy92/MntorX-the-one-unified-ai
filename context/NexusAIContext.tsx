@@ -1,7 +1,8 @@
 import React, { createContext, useState, useCallback, ReactNode, useEffect, useMemo, useRef } from 'react';
-import { EvolutionState, ChatMessage, SkillId, ChatSession, IMentorXContext, Source, EfficiencyStats, AppearanceSettings, Persona, Theme, WorkspaceState, CodeFile, ToolCall, ToolResponsePart, Task, TaskStep, AiWidget, User, Attachment } from '../types';
+import { EvolutionState, ChatMessage, SkillId, ChatSession, IMentorXContext, Source, EfficiencyStats, AppearanceSettings, Persona, Theme, WorkspaceState, CodeFile, ToolCall, ToolResponsePart, Task, TaskStep, AiWidget, User, Attachment, UiSettings, UserDataBundle } from '../types';
 import { INITIAL_EVOLUTION_STATE, MENTORX_CORE_CACHE, MENTORX_PERSONAS, THEME_OPTIONS, MENTORX_MODES, SUPPORTED_LANGUAGES, COST_SAVER_SYSTEM_PROMPT_TOKEN_COUNT, ORIGINAL_SYSTEM_PROMPT_TOKEN_COUNT, resolvePersonaIcon } from '../constants';
-import { streamMentorXResponse, generateMentorXImage, getAiCodeSuggestion, getWorkspaceAnalysis, generateTaskPlan, generateAiWidget, generatePromptForImageEditing, classifyPromptIntent } from '../services/geminiService';
+import { streamMentorXResponse, generateMentorXImage, getAiCodeSuggestion, getWorkspaceAnalysis, generateTaskPlan, generateAiWidget, generatePromptForImageEditing, classifyPromptIntent, initializeAiClient, getAiInitializationError } from '../services/geminiService';
+import { getUserDataBundle, saveUserDataBundle } from '../services/firestoreService';
 import { GenerateContentResponse, Part } from '@google/genai';
 
 declare const google: any;
@@ -19,28 +20,18 @@ const DEFAULT_APPEARANCE: AppearanceSettings = {
     customCss: '/* Your custom CSS rules will be applied here */\n',
 };
 
+const DEFAULT_UI_SETTINGS: UiSettings = {
+    isSidebarCollapsed: false,
+    showRightSidebar: true,
+    showSidebar: true,
+    dashboardWidgetIds: [],
+};
+
 const getLanguageFromFileName = (fileName: string): string => {
     const extension = '.' + fileName.split('.').pop();
     const lang = SUPPORTED_LANGUAGES.find(l => l.extensions.includes(extension?.toLowerCase() || ''));
     return lang ? lang.value : 'plaintext';
 };
-
-const getMimeType = (filename: string): string => {
-    const extension = filename.split('.').pop()?.toLowerCase() || '';
-    switch (extension) {
-        case 'html': return 'text/html';
-        case 'css': return 'text/css';
-        case 'js':
-        case 'mjs': return 'application/javascript';
-        case 'json': return 'application/json';
-        case 'png': return 'image/png';
-        case 'jpg':
-        case 'jpeg': return 'image/jpeg';
-        case 'gif': return 'image/gif';
-        case 'svg': return 'image/svg+xml';
-        default: return 'text/plain';
-    }
-}
 
 const DEFAULT_SANDBOX_WORKSPACE_STATE: WorkspaceState = {
     files: [
@@ -175,113 +166,164 @@ const decodeJwt = (token: string): User | null => {
     }
 };
 
+const DEFAULT_STATS: EfficiencyStats = { apiCallsAvoided: 0, tokensSaved: 0 };
+
 export const MentorXProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  // State
+  const [user, setUser] = useState<User | null>(null);
+  const [isUserDataLoading, setIsUserDataLoading] = useState(true);
+  
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [evolutionState, setEvolutionState] = useState<EvolutionState>(INITIAL_EVOLUTION_STATE);
+  const [stats, setStats] = useState<EfficiencyStats>(DEFAULT_STATS);
+  const [customPersonas, setCustomPersonas] = useState<Persona[]>([]);
+  const [customInstruction, setCustomInstruction] = useState('');
+  
+  const [appearanceSettings, setAppearanceSettings] = useState<AppearanceSettings>(DEFAULT_APPEARANCE);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(DEFAULT_UI_SETTINGS.isSidebarCollapsed);
+  const [showRightSidebar, setShowRightSidebar] = useState(DEFAULT_UI_SETTINGS.showRightSidebar);
+  const [showSidebar, setShowSidebar] = useState(DEFAULT_UI_SETTINGS.showSidebar);
+  const [dashboardWidgetIds, setDashboardWidgetIds] = useState<string[]>(DEFAULT_UI_SETTINGS.dashboardWidgetIds);
+
   const [isLoading, setIsLoading] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isLowFidelityMode, setIsLowFidelityMode] = useState(false);
   const [isCostSaverMode, setIsCostSaverMode] = useState(true);
-  const [stats, setStats] = useState<EfficiencyStats>({ apiCallsAvoided: 0, tokensSaved: 0 });
   const [searchQuery, setSearchQuery] = useState('');
-  const [customInstruction, setCustomInstruction] = useState('');
-  const [appearanceSettings, setAppearanceSettings] = useState<AppearanceSettings>(DEFAULT_APPEARANCE);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
-  const [customPersonas, setCustomPersonas] = useState<Persona[]>([]);
-  const [showRightSidebar, setShowRightSidebar] = useState(true);
-  const [showSidebar, setShowSidebar] = useState(true);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isFocusMode, setIsFocusMode] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
-  const [dashboardWidgetIds, setDashboardWidgetIds] = useState<string[]>([]);
-  const [user, setUser] = useState<User | null>(null);
+  const [configError, setConfigError] = useState<string | null>(null);
 
+  // Refs
   const stopGenerationRef = useRef(false);
   const initialLoadComplete = useRef(false);
   const saveTimeoutRef = useRef<number | null>(null);
-  const recognitionRef = useRef<any>(null); // SpeechRecognition instance
+  const recognitionRef = useRef<any>(null);
 
-  // --- LOCAL STORAGE PERSISTENCE ---
-  
+  // --- CONFIG & AUTH ---
+
   useEffect(() => {
-    try {
-      const savedSessions = localStorage.getItem('mentorx_sessions');
-      if (savedSessions) setSessions(JSON.parse(savedSessions));
+    // This effect runs once on mount to initialize services and check configuration.
+    initializeAiClient();
+    setConfigError(getAiInitializationError());
+  }, []);
 
-      const savedActiveId = localStorage.getItem('mentorx_activeSessionId');
-      if (savedActiveId) setActiveSessionId(JSON.parse(savedActiveId));
-      
-      const savedEvolution = localStorage.getItem('mentorx_evolutionState');
-      if (savedEvolution) setEvolutionState(JSON.parse(savedEvolution));
+  const resetStateToDefault = () => {
+    setSessions([]);
+    setActiveSessionId(null);
+    setEvolutionState(INITIAL_EVOLUTION_STATE);
+    setStats(DEFAULT_STATS);
+    setCustomPersonas([]);
+    setCustomInstruction('');
+    setAppearanceSettings(DEFAULT_APPEARANCE);
+    setIsSidebarCollapsed(DEFAULT_UI_SETTINGS.isSidebarCollapsed);
+    setShowRightSidebar(DEFAULT_UI_SETTINGS.showRightSidebar);
+    setShowSidebar(DEFAULT_UI_SETTINGS.showSidebar);
+    setDashboardWidgetIds(DEFAULT_UI_SETTINGS.dashboardWidgetIds);
+  }
 
-      const savedSettings = localStorage.getItem('mentorx_appearanceSettings');
-      if (savedSettings) setAppearanceSettings(JSON.parse(savedSettings));
+  const loadUserData = useCallback(async (userData: User) => {
+    setIsUserDataLoading(true);
+    const cloudData = await getUserDataBundle(userData);
 
-      const savedInstruction = localStorage.getItem('mentorx_customInstruction');
-      if (savedInstruction) setCustomInstruction(JSON.parse(savedInstruction));
-
-      const savedPersonas = localStorage.getItem('mentorx_customPersonas');
-      if (savedPersonas) setCustomPersonas(JSON.parse(savedPersonas));
-      
-      const savedShowTracker = localStorage.getItem('mentorx_showEvolutionTracker'); // for backward compat
-      const savedShowRightSidebar = localStorage.getItem('mentorx_showRightSidebar');
-      if (savedShowRightSidebar) setShowRightSidebar(JSON.parse(savedShowRightSidebar));
-      else if (savedShowTracker) setShowRightSidebar(JSON.parse(savedShowTracker));
-
-      const savedShowSidebar = localStorage.getItem('mentorx_showSidebar');
-      if (savedShowSidebar) setShowSidebar(JSON.parse(savedShowSidebar));
-      
-      const savedSidebarCollapsed = localStorage.getItem('mentorx_isSidebarCollapsed');
-      if (savedSidebarCollapsed) setIsSidebarCollapsed(JSON.parse(savedSidebarCollapsed));
-
-      const savedDashboardWidgets = localStorage.getItem('mentorx_dashboardWidgetIds');
-      if (savedDashboardWidgets) setDashboardWidgetIds(JSON.parse(savedDashboardWidgets));
-      
-      const savedUser = localStorage.getItem('mentorx_user');
-      if(savedUser) setUser(JSON.parse(savedUser));
-
-    } catch (error) {
-      console.error("Failed to load state from localStorage:", error);
+    if (cloudData) {
+        setSessions(cloudData.sessions || []);
+        setCustomPersonas(cloudData.customPersonas || []);
+        setAppearanceSettings(cloudData.appearanceSettings || DEFAULT_APPEARANCE);
+        setCustomInstruction(cloudData.customInstruction || '');
+        setEvolutionState(cloudData.evolutionState || INITIAL_EVOLUTION_STATE);
+        setStats(cloudData.stats || DEFAULT_STATS);
+        
+        const uiSettings = cloudData.uiSettings || DEFAULT_UI_SETTINGS;
+        setIsSidebarCollapsed(uiSettings.isSidebarCollapsed);
+        setShowRightSidebar(uiSettings.showRightSidebar);
+        setShowSidebar(uiSettings.showSidebar);
+        setDashboardWidgetIds(uiSettings.dashboardWidgetIds);
+    } else {
+        resetStateToDefault();
     }
+
+    setActiveSessionId(null);
+    setIsUserDataLoading(false);
     initialLoadComplete.current = true;
   }, []);
 
-  const saveData = useCallback(() => {
-      if (!initialLoadComplete.current) return;
-      
-      setSaveStatus('saving');
-      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+  const login = useCallback(async (credential: string) => {
+    const userData = decodeJwt(credential);
+    if (userData) {
+      setUser(userData);
+      localStorage.setItem('mentorx_user', JSON.stringify(userData));
+      await loadUserData(userData);
+    }
+  }, [loadUserData]);
 
-      saveTimeoutRef.current = window.setTimeout(() => {
-          try {
-              localStorage.setItem('mentorx_sessions', JSON.stringify(sessions));
-              localStorage.setItem('mentorx_activeSessionId', JSON.stringify(activeSessionId));
-              localStorage.setItem('mentorx_evolutionState', JSON.stringify(evolutionState));
-              localStorage.setItem('mentorx_appearanceSettings', JSON.stringify(appearanceSettings));
-              localStorage.setItem('mentorx_customInstruction', JSON.stringify(customInstruction));
-              localStorage.setItem('mentorx_customPersonas', JSON.stringify(customPersonas));
-              localStorage.setItem('mentorx_showRightSidebar', JSON.stringify(showRightSidebar));
-              localStorage.setItem('mentorx_showSidebar', JSON.stringify(showSidebar));
-              localStorage.setItem('mentorx_isSidebarCollapsed', JSON.stringify(isSidebarCollapsed));
-              localStorage.setItem('mentorx_dashboardWidgetIds', JSON.stringify(dashboardWidgetIds));
-              localStorage.setItem('mentorx_user', JSON.stringify(user));
-              localStorage.removeItem('mentorx_showEvolutionTracker'); // Cleanup old key
-              setSaveStatus('saved');
-              setTimeout(() => setSaveStatus('idle'), 2000);
-          } catch (error) {
-              console.error("Failed to save state to localStorage:", error);
-              setSaveStatus('idle');
-          }
-      }, 1000);
-  }, [sessions, activeSessionId, evolutionState, appearanceSettings, customInstruction, customPersonas, showRightSidebar, showSidebar, isSidebarCollapsed, dashboardWidgetIds, user]);
+  const logout = useCallback(() => {
+    if (typeof google !== 'undefined' && google.accounts?.id) {
+        google.accounts.id.disableAutoSelect();
+    }
+    localStorage.removeItem('mentorx_user');
+    setUser(null);
+    resetStateToDefault();
+  }, []);
+  
+  useEffect(() => {
+    const savedUser = localStorage.getItem('mentorx_user');
+    if (savedUser) {
+        const userData = JSON.parse(savedUser);
+        setUser(userData);
+        loadUserData(userData);
+    } else {
+        setIsUserDataLoading(false);
+        initialLoadComplete.current = true;
+    }
+  }, [loadUserData]);
+
+  const saveData = useCallback(() => {
+    if (!initialLoadComplete.current || !user || isUserDataLoading) return;
+
+    setSaveStatus('saving');
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+
+    saveTimeoutRef.current = window.setTimeout(async () => {
+      const dataBundle: UserDataBundle = {
+        sessions,
+        customPersonas,
+        appearanceSettings,
+        customInstruction,
+        uiSettings: {
+          isSidebarCollapsed,
+          showRightSidebar,
+          showSidebar,
+          dashboardWidgetIds,
+        },
+        evolutionState,
+        stats,
+      };
+      try {
+        await saveUserDataBundle(user, dataBundle);
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus('idle'), 2000);
+      } catch (error) {
+        console.error("Failed to save data to cloud:", error);
+        setSaveStatus('idle');
+      }
+    }, 1500);
+  }, [
+    user, isUserDataLoading, sessions, customPersonas, appearanceSettings, 
+    customInstruction, isSidebarCollapsed, showRightSidebar, showSidebar, 
+    dashboardWidgetIds, evolutionState, stats
+  ]);
 
   useEffect(() => {
-    saveData();
-  }, [saveData]);
-  
+    if (user) {
+      saveData();
+    }
+  }, [saveData, user]);
+
 
   // --- COMPUTED VALUES ---
 
@@ -304,21 +346,6 @@ export const MentorXProvider: React.FC<{ children: ReactNode }> = ({ children })
   }, [appearanceSettings.activeThemeId, appearanceSettings.customThemes]);
 
   const isPremiumUser = !!user;
-
-  // --- LOGIN/LOGOUT ---
-  const login = useCallback((credential: string) => {
-      const userData = decodeJwt(credential);
-      if (userData) {
-          setUser(userData);
-      }
-  }, []);
-
-  const logout = useCallback(() => {
-      if (typeof google !== 'undefined' && google.accounts?.id) {
-        google.accounts.id.disableAutoSelect();
-      }
-      setUser(null);
-  }, []);
 
   // --- SESSION/CHAT MANAGEMENT ---
   
@@ -1081,7 +1108,7 @@ export const MentorXProvider: React.FC<{ children: ReactNode }> = ({ children })
     }, []);
 
   const value: IMentorXContext = useMemo(() => ({
-      sessions, activeSessionId, activeSession, evolutionState, isLoading, isLowFidelityMode, isCostSaverMode, stats, isPremiumUser, searchQuery, customInstruction, isSidebarOpen, isSidebarCollapsed, saveStatus, appearanceSettings, theme, activePersona, customPersonas, showRightSidebar, showSidebar, isCommandPaletteOpen, isSettingsOpen, isFocusMode, isRecording, dashboardWidgetIds, user, login, logout, addWidgetToDashboard, removeWidgetFromDashboard,
+      sessions, activeSessionId, activeSession, evolutionState, isLoading, isLowFidelityMode, isCostSaverMode, stats, isPremiumUser, searchQuery, customInstruction, isSidebarOpen, isSidebarCollapsed, saveStatus, appearanceSettings, theme, activePersona, customPersonas, showRightSidebar, showSidebar, isCommandPaletteOpen, isSettingsOpen, isFocusMode, isRecording, dashboardWidgetIds, user, isUserDataLoading, configError, login, logout, addWidgetToDashboard, removeWidgetFromDashboard,
       setSearchQuery, setCustomInstruction, setIsSidebarOpen, setIsSidebarCollapsed, setAppearanceSettings: handleSetAppearanceSettings, setShowRightSidebar, setShowSidebar, setIsCommandPaletteOpen, setIsSettingsOpen, setIsFocusMode,
       startNewChat, deleteChat, renameChat, setActiveSessionId, sendMessage, editMessage, regenerateLastResponse, stopGeneration, exportChat,
       toggleSessionWebAccess, toggleSessionDeepAnalysis, toggleLowFidelityMode, toggleCostSaverMode,
@@ -1093,7 +1120,7 @@ export const MentorXProvider: React.FC<{ children: ReactNode }> = ({ children })
       addCustomTheme, updateCustomTheme, deleteCustomTheme,
       startRecording, stopRecording,
   }), [
-      sessions, activeSessionId, activeSession, evolutionState, isLoading, isLowFidelityMode, isCostSaverMode, stats, isPremiumUser, searchQuery, customInstruction, isSidebarOpen, isSidebarCollapsed, saveStatus, appearanceSettings, theme, activePersona, customPersonas, showRightSidebar, showSidebar, isCommandPaletteOpen, isSettingsOpen, isFocusMode, isRecording, dashboardWidgetIds, user, addWidgetToDashboard, removeWidgetFromDashboard,
+      sessions, activeSessionId, activeSession, evolutionState, isLoading, isLowFidelityMode, isCostSaverMode, stats, isPremiumUser, searchQuery, customInstruction, isSidebarOpen, isSidebarCollapsed, saveStatus, appearanceSettings, theme, activePersona, customPersonas, showRightSidebar, showSidebar, isCommandPaletteOpen, isSettingsOpen, isFocusMode, isRecording, dashboardWidgetIds, user, isUserDataLoading, configError, addWidgetToDashboard, removeWidgetFromDashboard,
       setSearchQuery, setCustomInstruction, setIsSidebarOpen, setIsSidebarCollapsed, handleSetAppearanceSettings, setShowRightSidebar, setShowSidebar, setActiveSessionId, setIsCommandPaletteOpen, setIsSettingsOpen, setIsFocusMode,
       startNewChat, deleteChat, renameChat, sendMessage, editMessage, regenerateLastResponse, stopGeneration, exportChat,
       toggleSessionWebAccess, toggleSessionDeepAnalysis, toggleLowFidelityMode, toggleCostSaverMode,

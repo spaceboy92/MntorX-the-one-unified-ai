@@ -216,6 +216,23 @@ export interface User {
   picture: string;
 }
 
+export interface UiSettings {
+    isSidebarCollapsed: boolean;
+    showRightSidebar: boolean;
+    showSidebar: boolean;
+    dashboardWidgetIds: string[];
+}
+
+export interface UserDataBundle {
+    sessions: ChatSession[];
+    customPersonas: Persona[];
+    appearanceSettings: AppearanceSettings;
+    customInstruction: string;
+    uiSettings: UiSettings;
+    evolutionState: EvolutionState;
+    stats: EfficiencyStats;
+}
+
 export interface IMentorXContext {
   sessions: ChatSession[];
   activeSessionId: string | null;
@@ -243,6 +260,8 @@ export interface IMentorXContext {
   isRecording: boolean;
   dashboardWidgetIds: string[];
   user: User | null;
+  isUserDataLoading: boolean;
+  configError: string | null;
   login: (credential: string) => void;
   logout: () => void;
   addWidgetToDashboard: (widgetId: string) => void;
