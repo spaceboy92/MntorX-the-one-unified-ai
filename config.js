@@ -7,7 +7,7 @@ window.mentorx_config = {
   //    - For LOCAL development (running `npm start`), leave this as an empty string: ''.
   //    - For PUBLIC deployment, you must change this to the URL of your deployed backend server.
   //      (e.g., 'https://your-mentorx-backend.onrender.com')
-  BACKEND_URL: '',
+  BACKEND_URL: 'https://mntorx-the-one-unified-ai-backend.onrender.com',
 
   // 2. GEMINI_API_KEY: The Gemini API key is managed by your backend server.
   //    You must set it as an environment variable (e.g., API_KEY) on your hosting provider.
@@ -16,11 +16,11 @@ window.mentorx_config = {
   //    Get this from your Firebase project settings.
   //    https://console.firebase.google.com/ -> Project Settings -> General -> Your apps -> Web app
   FIREBASE_CONFIG: {
-    apiKey: "YOUR_FIREBASE_API_KEY",
-    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-    projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_PROJECT_ID.appspot.com",
-    messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-    appId: "YOUR_APP_ID"
+    apiKey: "AIzaSyBBx-1kDgMV6n0ZtohJRJKzm9wrtFldxKI",
+    authDomain: "mentorx-cc0d2.firebaseapp.com",
+    projectId: "mentorx-cc0d2",
+    storageBucket: "mentorx-cc0d2.firebasestorage.app",
+    messagingSenderId: "869350590003",
+    appId: "1:869350590003:web:34cce726321f7564c10546"
   }
 };
