@@ -1,15 +1,27 @@
 import express from 'express';
-import path from 'path';
 import { GoogleGenAI, Type } from "@google/genai";
-import { fileURLToPath } from 'url';
 
 // --- SERVER SETUP ---
 const app = express();
 const port = process.env.PORT || 3000;
-app.use(express.json({ limit: '50mb' }));
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// --- CORS MIDDLEWARE ---
+// This is crucial for allowing your frontend (hosted on a different domain like GitHub Pages)
+// to communicate with this backend server. It tells the browser that requests from any origin are allowed.
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*'); // Allow any domain
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS'); // Allow these methods
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept'); // Allow these headers
+
+  // Handle the browser's preflight 'OPTIONS' request for CORS
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+
+  next();
+});
+
+app.use(express.json({ limit: '50mb' }));
 
 // --- GEMINI API SETUP ---
 const API_KEY = process.env.API_KEY;
@@ -185,9 +197,19 @@ app.post('/api/classify-intent', async (req, res) => {
 });
 
 
-// --- STATIC FILE SERVING ---
-app.use(express.static(path.join(__dirname, '')));
-app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
+// Add a root route to confirm the API server is running
+app.get('/', (req, res) => {
+    res.setHeader('Content-Type', 'text/html');
+    res.send(`
+        <body style="font-family: sans-serif; background-color: #111827; color: #F9FAFB; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0;">
+            <div style="text-align: center;">
+                <h1 style="color: #8B5CF6; font-size: 2.5rem;">MentorX Backend</h1>
+                <p style="font-size: 1.2rem;">API server is up and running.</p>
+                <p style="color: #9CA3AF;">This is the backend service for the MentorX application. Please visit the frontend URL to use the app.</p>
+            </div>
+        </body>
+    `);
+});
 
 // --- START SERVER ---
 app.listen(port, () => {
