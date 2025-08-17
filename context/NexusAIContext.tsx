@@ -1,7 +1,7 @@
 import React, { createContext, useState, useCallback, ReactNode, useEffect, useMemo, useRef } from 'react';
 import { EvolutionState, ChatMessage, SkillId, ChatSession, IMentorXContext, Source, EfficiencyStats, AppearanceSettings, Persona, Theme, WorkspaceState, CodeFile, ToolCall, ToolResponsePart, Task, TaskStep, AiWidget, User, Attachment, UiSettings, UserDataBundle } from '../types';
 import { INITIAL_EVOLUTION_STATE, MENTORX_CORE_CACHE, MENTORX_PERSONAS, THEME_OPTIONS, MENTORX_MODES, SUPPORTED_LANGUAGES, COST_SAVER_SYSTEM_PROMPT_TOKEN_COUNT, ORIGINAL_SYSTEM_PROMPT_TOKEN_COUNT, resolvePersonaIcon } from '../constants';
-import { streamMentorXResponse, generateMentorXImage, getAiCodeSuggestion, getWorkspaceAnalysis, generateTaskPlan, generateAiWidget, generatePromptForImageEditing, classifyPromptIntent, initializeAiClient, getAiInitializationError } from '../services/geminiService';
+import { streamMentorXResponse, generateMentorXImage, getAiCodeSuggestion, getWorkspaceAnalysis, generateTaskPlan, generateAiWidget, generatePromptForImageEditing, classifyPromptIntent } from '../services/geminiService';
 import { getUserDataBundle, saveUserDataBundle } from '../services/firestoreService';
 import { GenerateContentResponse, Part } from '@google/genai';
 
@@ -196,7 +196,6 @@ export const MentorXProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isFocusMode, setIsFocusMode] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
-  const [configError, setConfigError] = useState<string | null>(null);
 
   // Refs
   const stopGenerationRef = useRef(false);
@@ -204,15 +203,9 @@ export const MentorXProvider: React.FC<{ children: ReactNode }> = ({ children })
   const saveTimeoutRef = useRef<number | null>(null);
   const recognitionRef = useRef<any>(null);
 
-  // --- CONFIG & AUTH ---
+  // --- AUTH & DATA LOADING ---
 
-  useEffect(() => {
-    // This effect runs once on mount to initialize services and check configuration.
-    initializeAiClient();
-    setConfigError(getAiInitializationError());
-  }, []);
-
-  const resetStateToDefault = () => {
+  const resetStateToDefault = useCallback(() => {
     setSessions([]);
     setActiveSessionId(null);
     setEvolutionState(INITIAL_EVOLUTION_STATE);
@@ -224,7 +217,7 @@ export const MentorXProvider: React.FC<{ children: ReactNode }> = ({ children })
     setShowRightSidebar(DEFAULT_UI_SETTINGS.showRightSidebar);
     setShowSidebar(DEFAULT_UI_SETTINGS.showSidebar);
     setDashboardWidgetIds(DEFAULT_UI_SETTINGS.dashboardWidgetIds);
-  }
+  }, []);
 
   const loadUserData = useCallback(async (userData: User) => {
     setIsUserDataLoading(true);
@@ -250,7 +243,21 @@ export const MentorXProvider: React.FC<{ children: ReactNode }> = ({ children })
     setActiveSessionId(null);
     setIsUserDataLoading(false);
     initialLoadComplete.current = true;
-  }, []);
+  }, [resetStateToDefault]);
+
+  useEffect(() => {
+    // This effect runs once on mount to check for a logged-in user.
+    const savedUser = localStorage.getItem('mentorx_user');
+    if (savedUser) {
+        const userData = JSON.parse(savedUser);
+        setUser(userData);
+        loadUserData(userData);
+    } else {
+        setIsUserDataLoading(false);
+        initialLoadComplete.current = true;
+    }
+  }, [loadUserData]);
+
 
   const login = useCallback(async (credential: string) => {
     const userData = decodeJwt(credential);
@@ -268,20 +275,9 @@ export const MentorXProvider: React.FC<{ children: ReactNode }> = ({ children })
     localStorage.removeItem('mentorx_user');
     setUser(null);
     resetStateToDefault();
-  }, []);
+    initialLoadComplete.current = false;
+  }, [resetStateToDefault]);
   
-  useEffect(() => {
-    const savedUser = localStorage.getItem('mentorx_user');
-    if (savedUser) {
-        const userData = JSON.parse(savedUser);
-        setUser(userData);
-        loadUserData(userData);
-    } else {
-        setIsUserDataLoading(false);
-        initialLoadComplete.current = true;
-    }
-  }, [loadUserData]);
-
   const saveData = useCallback(() => {
     if (!initialLoadComplete.current || !user || isUserDataLoading) return;
 
@@ -427,7 +423,6 @@ export const MentorXProvider: React.FC<{ children: ReactNode }> = ({ children })
   const _sendMessageInternal = useCallback(async (
     sessionId: string, 
     history: ChatMessage[],
-    attachment: Attachment | null = null,
     boosted: boolean = false,
   ) => {
       const session = sessions.find(s => s.id === sessionId);
@@ -436,8 +431,6 @@ export const MentorXProvider: React.FC<{ children: ReactNode }> = ({ children })
       
       setIsLoading(true);
       stopGenerationRef.current = false;
-      
-      let filePart: Part | null = attachment ? { inlineData: { data: attachment.data, mimeType: attachment.type } } : null;
 
       const assistantMessageId = generateId();
       const assistantMessage: ChatMessage = { id: assistantMessageId, role: 'assistant', text: '', timestamp: new Date(), toolCalls: [], };
@@ -446,14 +439,13 @@ export const MentorXProvider: React.FC<{ children: ReactNode }> = ({ children })
       
       const processStream = async (streamHistory: ChatMessage[]) => {
           try {
-              const stream = await streamMentorXResponse(
+              const stream = streamMentorXResponse(
                 streamHistory, 
                 persona, 
                 session.isWebAccessEnabled, 
                 isCostSaverMode, 
                 session.isDeepAnalysis || boosted,
                 customInstruction, 
-                streamHistory.length === history.length + 1 ? filePart : null,
                 { temperature: session.temperature, topP: session.topP, topK: session.topK }
               );
 
@@ -471,23 +463,9 @@ export const MentorXProvider: React.FC<{ children: ReactNode }> = ({ children })
                       }));
                   }
                   
-                  const functionCallsFromChunk = chunk.functionCalls;
-                  if (functionCallsFromChunk) {
-                      const newToolCalls: ToolCall[] = functionCallsFromChunk.map((part, index) => ({
-                          id: `${part.name}_${index}_${Date.now()}`,
-                          type: 'function' as const,
-                          function: { name: part.name, arguments: part.args }
-                      }));
-                      toolCalls.push(...newToolCalls);
-                      updateSession(sessionId, s => ({
-                          messages: s.messages.map(m => {
-                              if (m.id === assistantMessageId) {
-                                  return { ...m, toolCalls: [...(m.toolCalls || []), ...newToolCalls] };
-                              }
-                              return m;
-                          })
-                      }));
-                  }
+                  // Backend is not yet configured to send tool calls, this is a placeholder
+                  // const functionCallsFromChunk = chunk.functionCalls;
+                  
                   lastChunk = chunk;
               }
 
@@ -504,13 +482,7 @@ export const MentorXProvider: React.FC<{ children: ReactNode }> = ({ children })
               }));
 
               if (toolCalls.length > 0 && !stopGenerationRef.current) {
-                  const toolResponses = await executeToolCalls(toolCalls, sessionId);
-                  const toolMessage: ChatMessage = {
-                      id: generateId(), role: 'tool', text: '', timestamp: new Date(), toolResponses: toolResponses,
-                  };
-                  const newHistory = [...streamHistory, { ...assistantMessage, ...finalAssistantMsg }, toolMessage];
-                  updateSession(sessionId, { messages: newHistory });
-                  await processStream(newHistory);
+                  // Tool call execution logic would go here
               }
           } catch (error) {
               const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
@@ -541,48 +513,21 @@ export const MentorXProvider: React.FC<{ children: ReactNode }> = ({ children })
       const session = sessions.find(s => s.id === activeSessionId);
       if (!session) return;
       
-      if (attachment && prompt && !options.aspectRatio && attachment.type.startsWith('image/')) {
-        setIsLoading(true);
-        const userMessage: ChatMessage = {
-            id: generateId(), role: 'user', text: prompt, timestamp: new Date(),
-            attachment: attachment,
-        };
-        const assistantMessage: ChatMessage = { id: generateId(), role: 'assistant', text: "Re-imagining your image...", timestamp: new Date() };
-
-        updateSession(activeSessionId, s => ({ messages: [...s.messages, userMessage, assistantMessage] }));
-
-        try {
-            const newImagePrompt = await generatePromptForImageEditing(prompt, { data: attachment.data, mimeType: attachment.type });
-            const imageUrls = await generateMentorXImage(newImagePrompt);
-            const [header, data] = imageUrls[0].split(',');
-            const mimeType = header.match(/:(.*?);/)?.[1] || 'image/jpeg';
-            const newAttachment: Attachment = { name: "edited-image.jpg", type: mimeType, data: data, size: data.length };
-            
-            updateSession(activeSessionId, s => ({
-                messages: s.messages.map(m => m.id === assistantMessage.id ? { ...m, text: `Here is the edited image based on your prompt: "${prompt}"`, attachment: newAttachment } : m)
-            }));
-        } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : "An unknown error occurred during image editing.";
-            updateSession(activeSessionId, s => ({
-                messages: s.messages.map(m => m.id === assistantMessage.id ? { ...m, text: `Error: ${errorMessage}` } : m)
-            }));
-        } finally {
-            setIsLoading(false);
-        }
-        return;
-    }
-
-      if (options.aspectRatio) {
+      // All AI image generation now goes through the backend
+      if (options.aspectRatio || (attachment && prompt && attachment.type.startsWith('image/')) || await classifyPromptIntent(prompt) === 'image_generation') {
           setIsLoading(true);
-          const userMessage: ChatMessage = { id: generateId(), role: 'user', text: prompt, timestamp: new Date() };
+          const userMessage: ChatMessage = { id: generateId(), role: 'user', text: prompt, timestamp: new Date(), attachment: attachment ?? undefined };
           const assistantMessage: ChatMessage = { id: generateId(), role: 'assistant', text: "Generating your image(s)...", timestamp: new Date() };
           updateSession(activeSessionId, s => ({ messages: [...s.messages, userMessage, assistantMessage] }));
+
           try {
-              const imageUrls = await generateMentorXImage(prompt, options.aspectRatio, options.numberOfImages);
+              const finalPrompt = attachment ? await generatePromptForImageEditing(prompt, { data: attachment.data, mimeType: attachment.type }) : prompt;
+              const imageUrls = await generateMentorXImage(finalPrompt, options.aspectRatio, options.numberOfImages);
+
               const [header, data] = imageUrls[0].split(',');
               const mimeType = header.match(/:(.*?);/)?.[1] || 'image/jpeg';
               const imgAttachment: Attachment = { name: "generated-image.jpg", type: mimeType, data: data, size: data.length };
-              updateSession(activeSessionId, s => ({ messages: s.messages.map(m => m.id === assistantMessage.id ? { ...m, text: `Here are the images you requested for "${prompt}"`, attachment: imgAttachment } : m) }));
+              updateSession(activeSessionId, s => ({ messages: s.messages.map(m => m.id === assistantMessage.id ? { ...m, text: `Here is the image you requested:`, attachment: imgAttachment } : m) }));
           } catch (error) {
               const errorMessage = error instanceof Error ? error.message : "An unknown error occurred during image generation.";
               updateSession(activeSessionId, s => ({ messages: s.messages.map(m => m.id === assistantMessage.id ? { ...m, text: `Error: ${errorMessage}` } : m) }));
@@ -590,30 +535,6 @@ export const MentorXProvider: React.FC<{ children: ReactNode }> = ({ children })
               setIsLoading(false);
           }
           return;
-      }
-      
-      const specialPersonas = ['gamedev', 'sandbox', 'widget_factory'];
-      if (!attachment && prompt && !specialPersonas.includes(session.activePersonaId || '')) {
-          const intent = await classifyPromptIntent(prompt);
-          if (intent === 'image_generation') {
-              setIsLoading(true);
-              const userMessage: ChatMessage = { id: generateId(), role: 'user', text: prompt, timestamp: new Date() };
-              const assistantMessage: ChatMessage = { id: generateId(), role: 'assistant', text: "Generating your image...", timestamp: new Date() };
-              updateSession(activeSessionId, s => ({ messages: [...s.messages, userMessage, assistantMessage] }));
-              try {
-                  const imageUrls = await generateMentorXImage(prompt, '1:1', 1);
-                  const [header, data] = imageUrls[0].split(',');
-                  const mimeType = header.match(/:(.*?);/)?.[1] || 'image/jpeg';
-                  const imgAttachment: Attachment = { name: "generated-image.jpg", type: mimeType, data: data, size: data.length };
-                  updateSession(activeSessionId, s => ({ messages: s.messages.map(m => m.id === assistantMessage.id ? { ...m, text: `Here is the image you requested:`, attachment: imgAttachment } : m) }));
-              } catch (error) {
-                  const errorMessage = error instanceof Error ? error.message : "An unknown error occurred during image generation.";
-                  updateSession(activeSessionId, s => ({ messages: s.messages.map(m => m.id === assistantMessage.id ? { ...m, text: `Error: ${errorMessage}` } : m) }));
-              } finally {
-                  setIsLoading(false);
-              }
-              return;
-          }
       }
 
       const cacheKey = prompt.toLowerCase().trim();
@@ -633,7 +554,7 @@ export const MentorXProvider: React.FC<{ children: ReactNode }> = ({ children })
 
       const newHistory = [...session.messages, userMessage];
       updateSession(activeSessionId, { messages: newHistory });
-      await _sendMessageInternal(activeSessionId, newHistory, attachment, boosted);
+      await _sendMessageInternal(activeSessionId, newHistory, boosted);
 
   }, [activeSessionId, sessions, _sendMessageInternal, updateSession]);
 
@@ -649,7 +570,7 @@ export const MentorXProvider: React.FC<{ children: ReactNode }> = ({ children })
     const newHistory = [...historyUpToEdit, editedMessage];
 
     updateSession(sessionId, { messages: newHistory, activeTask: null });
-    await _sendMessageInternal(sessionId, newHistory, editedMessage.attachment || null);
+    await _sendMessageInternal(sessionId, newHistory);
   }, [sessions, _sendMessageInternal, updateSession]);
 
   const regenerateLastResponse = useCallback(async (sessionId: string) => {
@@ -667,91 +588,17 @@ export const MentorXProvider: React.FC<{ children: ReactNode }> = ({ children })
     if (lastUserMessageIndex === -1) return;
 
     const newHistory = session.messages.slice(0, lastUserMessageIndex + 1);
-    const lastUserMessage = newHistory[newHistory.length - 1];
     
     updateSession(sessionId, { messages: newHistory, activeTask: null });
-    await _sendMessageInternal(sessionId, newHistory, lastUserMessage.attachment || null);
+    await _sendMessageInternal(sessionId, newHistory);
   }, [sessions, _sendMessageInternal, updateSession]);
 
   // --- WORKSPACE & CODECANVAS ---
   
   const executeToolCalls = async (toolCalls: ToolCall[], sessionId: string): Promise<ToolResponsePart[]> => {
-    const responses: ToolResponsePart[] = [];
-    const sessionRef = { ...sessions.find(s => s.id === sessionId)! };
-    
-    for (const call of toolCalls) {
-        let response: Record<string, any> = { success: false, message: 'Tool not found' };
-        try {
-            switch (call.function.name) {
-                // WORKSPACE TOOLS
-                case 'createFile':
-                    if (sessionRef.workspaceState) {
-                        const newFile: CodeFile = { id: generateId(), name: call.function.arguments.fileName, code: call.function.arguments.code || '', language: getLanguageFromFileName(call.function.arguments.fileName) };
-                        sessionRef.workspaceState.files.push(newFile);
-                        response = { success: true, message: `File ${call.function.arguments.fileName} created.` };
-                    }
-                    break;
-                case 'updateFile':
-                    if (sessionRef.workspaceState) {
-                        const fileToUpdate = sessionRef.workspaceState.files.find(f => f.name === call.function.arguments.fileName);
-                        if (fileToUpdate) {
-                            fileToUpdate.code = call.function.arguments.code;
-                            response = { success: true, message: `File ${call.function.arguments.fileName} updated.` };
-                        } else {
-                            const newFileOnUpdate: CodeFile = { id: generateId(), name: call.function.arguments.fileName, code: call.function.arguments.code || '', language: getLanguageFromFileName(call.function.arguments.fileName) };
-                            sessionRef.workspaceState.files.push(newFileOnUpdate);
-                            response = { success: true, message: `File ${call.function.arguments.fileName} was not found, so it was created instead.` };
-                        }
-                    }
-                    break;
-                case 'listFiles':
-                    if (sessionRef.workspaceState) {
-                        response = { files: sessionRef.workspaceState.files.map(f => f.name) };
-                    }
-                    break;
-                case 'generateTestFile':
-                     if (sessionRef.workspaceState) {
-                         const sourceFile = sessionRef.workspaceState.files.find(f => f.name === call.function.arguments.fileName);
-                         if (sourceFile) {
-                            const testCode = await getAiCodeSuggestion(sourceFile.code, sourceFile.language, 'test', call.function.arguments.framework);
-                            const parts = sourceFile.name.split('.');
-                            const testFileName = `${parts[0]}.test.${parts[1]}`;
-                            const newTestFile: CodeFile = { id: generateId(), name: testFileName, code: testCode, language: getLanguageFromFileName(testFileName) };
-                            sessionRef.workspaceState.files.push(newTestFile);
-                            response = { success: true, message: `Test file ${testFileName} created.` };
-                         } else {
-                            response = { success: false, message: `Source file not found: ${call.function.arguments.fileName}` };
-                         }
-                     }
-                    break;
-                // WIDGET TOOLS
-                case 'createWidget':
-                    const jsx = await generateAiWidget(call.function.arguments.prompt);
-                    const newWidget: AiWidget = { id: generateId(), prompt: call.function.arguments.prompt, jsx, lastUpdatedAt: new Date() };
-                    sessionRef.widgets = [...(sessionRef.widgets || []), newWidget];
-                    sessionRef.activeWidgetId = newWidget.id;
-                    response = { success: true, message: `Widget created successfully.` };
-                    break;
-                case 'updateWidget':
-                    const { widgetId, newPrompt } = call.function.arguments;
-                    const newJsx = await generateAiWidget(newPrompt);
-                    sessionRef.widgets = (sessionRef.widgets || []).map(w =>
-                        w.id === widgetId ? { ...w, jsx: newJsx, prompt: newPrompt, lastUpdatedAt: new Date() } : w
-                    );
-                    response = { success: true, message: `Widget ${widgetId} updated.` };
-                    break;
-            }
-        } catch(e) {
-            response = { success: false, message: e instanceof Error ? e.message : 'Unknown error' };
-        }
-        responses.push({ toolCallId: call.id, functionName: call.function.name, response });
-    }
-    updateSession(sessionId, { 
-        workspaceState: sessionRef.workspaceState, 
-        widgets: sessionRef.widgets,
-        activeWidgetId: sessionRef.activeWidgetId,
-    });
-    return responses;
+    // This now needs to be proxied to the backend, placeholder for now
+    console.warn("Tool calls are not yet implemented with the backend.");
+    return [];
   };
   
   const updateWorkspaceState = (sessionId: string, updates: Partial<WorkspaceState>) => {
@@ -996,7 +843,7 @@ export const MentorXProvider: React.FC<{ children: ReactNode }> = ({ children })
 
       const newHistory = [...session.messages, userMessage];
       updateSession(sessionId, { messages: newHistory });
-      await _sendMessageInternal(sessionId, newHistory, null);
+      await _sendMessageInternal(sessionId, newHistory);
   }, [sessions, updateSession, _sendMessageInternal]);
 
   const setActiveWidgetId = useCallback((sessionId: string, widgetId: string | null) => {
@@ -1108,7 +955,7 @@ export const MentorXProvider: React.FC<{ children: ReactNode }> = ({ children })
     }, []);
 
   const value: IMentorXContext = useMemo(() => ({
-      sessions, activeSessionId, activeSession, evolutionState, isLoading, isLowFidelityMode, isCostSaverMode, stats, isPremiumUser, searchQuery, customInstruction, isSidebarOpen, isSidebarCollapsed, saveStatus, appearanceSettings, theme, activePersona, customPersonas, showRightSidebar, showSidebar, isCommandPaletteOpen, isSettingsOpen, isFocusMode, isRecording, dashboardWidgetIds, user, isUserDataLoading, configError, login, logout, addWidgetToDashboard, removeWidgetFromDashboard,
+      sessions, activeSessionId, activeSession, evolutionState, isLoading, isLowFidelityMode, isCostSaverMode, stats, isPremiumUser, searchQuery, customInstruction, isSidebarOpen, isSidebarCollapsed, saveStatus, appearanceSettings, theme, activePersona, customPersonas, showRightSidebar, showSidebar, isCommandPaletteOpen, isSettingsOpen, isFocusMode, isRecording, dashboardWidgetIds, user, isUserDataLoading, login, logout, addWidgetToDashboard, removeWidgetFromDashboard,
       setSearchQuery, setCustomInstruction, setIsSidebarOpen, setIsSidebarCollapsed, setAppearanceSettings: handleSetAppearanceSettings, setShowRightSidebar, setShowSidebar, setIsCommandPaletteOpen, setIsSettingsOpen, setIsFocusMode,
       startNewChat, deleteChat, renameChat, setActiveSessionId, sendMessage, editMessage, regenerateLastResponse, stopGeneration, exportChat,
       toggleSessionWebAccess, toggleSessionDeepAnalysis, toggleLowFidelityMode, toggleCostSaverMode,
@@ -1120,7 +967,7 @@ export const MentorXProvider: React.FC<{ children: ReactNode }> = ({ children })
       addCustomTheme, updateCustomTheme, deleteCustomTheme,
       startRecording, stopRecording,
   }), [
-      sessions, activeSessionId, activeSession, evolutionState, isLoading, isLowFidelityMode, isCostSaverMode, stats, isPremiumUser, searchQuery, customInstruction, isSidebarOpen, isSidebarCollapsed, saveStatus, appearanceSettings, theme, activePersona, customPersonas, showRightSidebar, showSidebar, isCommandPaletteOpen, isSettingsOpen, isFocusMode, isRecording, dashboardWidgetIds, user, isUserDataLoading, configError, addWidgetToDashboard, removeWidgetFromDashboard,
+      sessions, activeSessionId, activeSession, evolutionState, isLoading, isLowFidelityMode, isCostSaverMode, stats, isPremiumUser, searchQuery, customInstruction, isSidebarOpen, isSidebarCollapsed, saveStatus, appearanceSettings, theme, activePersona, customPersonas, showRightSidebar, showSidebar, isCommandPaletteOpen, isSettingsOpen, isFocusMode, isRecording, dashboardWidgetIds, user, isUserDataLoading, addWidgetToDashboard, removeWidgetFromDashboard,
       setSearchQuery, setCustomInstruction, setIsSidebarOpen, setIsSidebarCollapsed, handleSetAppearanceSettings, setShowRightSidebar, setShowSidebar, setActiveSessionId, setIsCommandPaletteOpen, setIsSettingsOpen, setIsFocusMode,
       startNewChat, deleteChat, renameChat, sendMessage, editMessage, regenerateLastResponse, stopGeneration, exportChat,
       toggleSessionWebAccess, toggleSessionDeepAnalysis, toggleLowFidelityMode, toggleCostSaverMode,

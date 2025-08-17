@@ -1,24 +1,22 @@
 {
-  "name": "mentorx-—-your-personal-ai-mentor",
-  "private": true,
-  "version": "0.0.0",
+  "name": "mentorx-backend-app",
+  "version": "1.0.0",
+  "description": "Backend server for MentorX to securely handle Gemini API calls.",
+  "main": "server.js",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "start": "node server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "keywords": [
+    "gemini",
+    "express",
+    "react"
+  ],
+  "author": "",
+  "license": "ISC",
   "dependencies": {
-    "react": "18.2.0",
     "@google/genai": "^1.8.0",
-    "react-virtualized-auto-sizer": "^1.0.24",
-    "react-window": "^1.8.10",
-    "react-dom": "18.2.0",
-    "firebase": "^12.1.0"
-  },
-  "devDependencies": {
-    "@types/node": "^22.14.0",
-    "typescript": "~5.8.2",
-    "vite": "^6.2.0"
+    "express": "^4.19.2"
   }
 }

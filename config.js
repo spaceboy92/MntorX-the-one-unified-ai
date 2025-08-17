@@ -1,22 +1,26 @@
-// --- LOCAL DEVELOPMENT CONFIGURATION ---
-// IMPORTANT: This file is for your local environment ONLY. It should NOT be committed to git.
-// You must fill in your own API keys and Firebase project details here.
+// --- LOCAL DEVELOPMENT & PRODUCTION CONFIGURATION ---
+// IMPORTANT: This file is for your local environment and for configuring your public deployment.
+// It should NOT be committed to git with sensitive keys.
 
 window.mentorx_config = {
-  // 1. GEMINI_API_KEY is now read from an environment variable for security.
-  // For local development, you can temporarily set it here for the polyfill to pick up,
-  // but the recommended approach is to use a proper development server that supports .env files.
-  // Example for temporary local testing:
-  // API_KEY: "AIzaSyBTVvVqJbazlHl5HC2E92O4uEmrtEKDwPg", 
+  // 1. BACKEND_URL: This tells your frontend where to find your backend server.
+  //    - For LOCAL development (running `npm start`), leave this as an empty string: ''.
+  //    - For PUBLIC deployment, you must change this to the URL of your deployed backend server.
+  //      (e.g., 'https://your-mentorx-backend.onrender.com')
+  BACKEND_URL: '',
 
-  // 2. Get your Firebase configuration from your Firebase project settings.
-  // https://console.firebase.google.com/ -> Project Settings -> General -> Your apps -> Web app
+  // 2. GEMINI_API_KEY: The Gemini API key is managed by your backend server.
+  //    You must set it as an environment variable (e.g., API_KEY) on your hosting provider.
+
+  // 3. FIREBASE_CONFIG: Required for saving chats and settings to the cloud.
+  //    Get this from your Firebase project settings.
+  //    https://console.firebase.google.com/ -> Project Settings -> General -> Your apps -> Web app
   FIREBASE_CONFIG: {
-    apiKey: "AIzaSyBBx-1kDgMV6n0ZtohJRJKzm9wrtFldxKI",
-    authDomain: "mentorx-cc0d2.firebaseapp.com",
-    projectId: "mentorx-cc0d2",
-    storageBucket: "mentorx-cc0d2.appspot.com",
-    messagingSenderId: "869350590003",
-    appId: "1:869350590003:web:34cce726321f7564c10546"
+    apiKey: "YOUR_FIREBASE_API_KEY",
+    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+    projectId: "YOUR_PROJECT_ID",
+    storageBucket: "YOUR_PROJECT_ID.appspot.com",
+    messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+    appId: "YOUR_APP_ID"
   }
 };

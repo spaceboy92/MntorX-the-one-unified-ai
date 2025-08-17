@@ -261,7 +261,6 @@ export interface IMentorXContext {
   dashboardWidgetIds: string[];
   user: User | null;
   isUserDataLoading: boolean;
-  configError: string | null;
   login: (credential: string) => void;
   logout: () => void;
   addWidgetToDashboard: (widgetId: string) => void;

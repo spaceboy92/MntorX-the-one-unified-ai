@@ -14,8 +14,6 @@
     <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&family=Roboto:wght@400;500;700&family=Lato:wght@400;700&family=Open+Sans:wght@400;600;700&family=Fira+Code:wght@400;500&family=Source+Code+Pro:wght@400;600&display=swap"></noscript>
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9361751730861694"
      crossorigin="anonymous"></script>
-    <!-- Babel Standalone for in-browser TSX transpilation -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style>
       :root {
         /* Base Colors */
@@ -138,8 +136,7 @@
       }
     </style>
   <script>
-    // Polyfill for process.env to support environment variables in a browser context.
-    // This allows the use of a standard, secure method for handling API keys.
+    // Polyfill for process.env, for library compatibility.
     if (typeof window.process === 'undefined') {
       window.process = { env: {} };
     }
@@ -157,7 +154,10 @@
     "firebase/app": "https://esm.sh/firebase@10.12.2/app",
     "firebase/auth": "https://esm.sh/firebase@10.12.2/auth",
     "firebase/firestore": "https://esm.sh/firebase@10.12.2/firestore",
-    "firebase/": "https://esm.sh/firebase@^12.1.0/"
+    "firebase/": "https://esm.sh/firebase@^12.1.0/",
+    "url": "https://esm.sh/url@^0.11.4",
+    "express": "https://esm.sh/express@^5.1.0",
+    "path": "https://esm.sh/path@^0.12.7"
   }
 }
 </script>
@@ -166,14 +166,6 @@
     <div class="animated-bg"></div>
     <div id="root" class="relative z-10"></div>
     <script src="./config.js"></script>
-    <script>
-      // For local development convenience, this script can inject the API key
-      // from config.js into the process.env polyfill.
-      // In a production environment, the API_KEY should be set directly by the hosting provider.
-      if (window.mentorx_config && window.mentorx_config.API_KEY) {
-         window.process.env.API_KEY = window.mentorx_config.API_KEY;
-      }
-    </script>
-    <script type="text/babel" data-presets="typescript,react" data-type="module" src="./index.tsx"></script>
+    <script type="module" src="./index.tsx"></script>
   </body>
 </html>
