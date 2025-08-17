@@ -23,20 +23,43 @@ app.use((req, res, next) => {
 
 app.use(express.json({ limit: '50mb' }));
 
-// --- GEMINI API SETUP ---
+// --- RESILIENT GEMINI API SETUP ---
+// This setup allows the server to run even if the API_KEY is missing.
 const API_KEY = process.env.API_KEY;
-if (!API_KEY) {
-  console.error("FATAL ERROR: API_KEY environment variable is not set.");
-  process.exit(1);
+let ai;
+
+if (API_KEY) {
+  ai = new GoogleGenAI({ apiKey: API_KEY });
+} else {
+  // We log a warning but DO NOT exit the process. This prevents the server from crashing.
+  console.warn("WARNING: API_KEY environment variable is not set. The server will run, but API endpoints will be unavailable and return a 503 error.");
 }
-const ai = new GoogleGenAI({ apiKey: API_KEY });
 const model = "gemini-2.5-flash";
+
+
+// --- API KEY CHECK MIDDLEWARE ---
+// This middleware runs before all /api/ routes. If the Gemini client (`ai`) wasn't initialized
+// because the key was missing, it sends a clear error message back to the frontend.
+const checkApiKey = (req, res, next) => {
+    if (!ai) {
+        // Use 503 Service Unavailable, as the server is running but can't fulfill its purpose.
+        return res.status(503).json({ error: 'Service Unavailable: The server is missing the required API_KEY configuration.' });
+    }
+    next();
+};
 
 // --- API HELPER ---
 const sendError = (res, message, status = 500) => {
     console.error(`API Error: ${message}`);
-    res.status(status).json({ error: message });
+    // Check if headers have been sent to avoid "Cannot set headers after they are sent to the client" error
+    if (!res.headersSent) {
+        res.status(status).json({ error: message });
+    }
 };
+
+// Apply the API key check middleware to all /api routes
+app.use('/api', checkApiKey);
+
 
 // --- API ENDPOINTS ---
 
@@ -52,9 +75,11 @@ app.post('/api/chat', async (req, res) => {
     try {
         const { history, persona, isWebAccessEnabled, isCostSaverMode, isDeepAnalysis, customInstruction, modelParams } = req.body;
         const systemInstruction = generateSystemInstruction(persona, isWebAccessEnabled, isCostSaverMode, isDeepAnalysis, customInstruction);
+        
+        // Convert message history to the format expected by the Gemini API
         const contents = history.map(msg => ({
             role: msg.role === 'assistant' ? 'model' : msg.role,
-            parts: [{ text: msg.text }], // Simplified for this example
+            parts: [{ text: msg.text }],
         }));
 
         const params = {
@@ -77,7 +102,9 @@ app.post('/api/chat', async (req, res) => {
         console.error('Error in /api/chat:', error);
         res.write(`data: ${JSON.stringify({ error: true, message: error.message })}\n\n`);
     } finally {
-        res.end();
+        if (!res.writableEnded) {
+            res.end();
+        }
     }
 });
 
@@ -107,9 +134,9 @@ app.post('/api/image', async (req, res) => {
 /**
  * All-purpose, non-streaming text generation endpoint
  */
-async function generateText(req, res, prompt, config = {}) {
+async function generateText(req, res, contents, config = {}) {
      try {
-        const response = await ai.models.generateContent({ model, contents: prompt, ...config });
+        const response = await ai.models.generateContent({ model, contents, ...config });
         return response.text;
     } catch (error) {
         sendError(res, `Failed to generate text: ${error.message}`);
@@ -214,10 +241,13 @@ app.get('/', (req, res) => {
 // --- START SERVER ---
 app.listen(port, () => {
     console.log(`MentorX server running at http://localhost:${port}`);
-    console.log("-------------------------------------------------");
-    console.log("IMPORTANT: Set the API_KEY environment variable.");
-    console.log("For example: API_KEY='your_gemini_api_key' npm start");
-    console.log("-------------------------------------------------");
+    if (!API_KEY) {
+        console.log("-------------------------------------------------");
+        console.warn("WARNING: API_KEY environment variable is NOT SET.");
+        console.warn("The server is running, but API calls will fail with a 503 error.");
+        console.warn("Please set the API_KEY in your Render environment settings for full functionality.");
+        console.log("-------------------------------------------------");
+    }
 });
 
 // --- HELPER FUNCTIONS ---
