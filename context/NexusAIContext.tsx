@@ -529,11 +529,11 @@ export const MentorXProvider: React.FC<{ children: ReactNode }> = ({ children })
           }
       };
 
-      await processStream([...history, assistantMessage]);
+      await processStream(history);
 
       setIsLoading(false);
   }, [sessions, allPersonas, isCostSaverMode, customInstruction, updateSession]);
-// FIX: `executeTask` was called but not defined. Implemented the function to handle task planning and execution.
+  
   const executeTask = useCallback(async (sessionId: string, goal: string) => {
       const session = sessions.find(s => s.id === sessionId);
       if (!session) return;
@@ -546,7 +546,8 @@ export const MentorXProvider: React.FC<{ children: ReactNode }> = ({ children })
       };
       
       const userGoalMessage: ChatMessage = {id: generateId(), role: 'user', text: `/execute ${goal}`, timestamp: new Date()};
-      updateSession(sessionId, { messages: [...session.messages, userGoalMessage], activeTask: initialTask });
+      const currentMessages = [...session.messages, userGoalMessage];
+      updateSession(sessionId, { messages: currentMessages, activeTask: initialTask });
       
       try {
           const planSteps = await generateTaskPlan(goal);
@@ -563,9 +564,8 @@ export const MentorXProvider: React.FC<{ children: ReactNode }> = ({ children })
               text: `My goal is: "${goal}". You have generated this plan:\n${taskPlan.map((s, i) => `${i+1}. ${s.description}`).join('\n')}\n\nPlease start executing the first step. Use the available tools.`,
               timestamp: new Date()
           };
-
-          // The history for the AI must include the initial user command to provide context.
-          const executionHistory = [...session.messages, userGoalMessage, executionKickoffMessage];
+          
+          const executionHistory = [...currentMessages, executionKickoffMessage];
 
           await _sendMessageInternal(sessionId, executionHistory);
 
@@ -578,7 +578,6 @@ export const MentorXProvider: React.FC<{ children: ReactNode }> = ({ children })
       }
   }, [sessions, updateSession, _sendMessageInternal]);
 
-  // FIX: `performAiCodeAction` was called but not defined. Implemented the function to handle various AI code-related actions.
   const performAiCodeAction = useCallback(async (sessionId: string, action: 'refactor' | 'debug' | 'document' | 'explain' | 'test' | 'analyze') => {
       const session = sessions.find(s => s.id === sessionId);
       if (!session?.workspaceState) return;
@@ -975,8 +974,6 @@ export const MentorXProvider: React.FC<{ children: ReactNode }> = ({ children })
       setDashboardWidgetIds(prev => prev.filter(id => id !== widgetId));
   }, []);
     
-// FIX: The MentorXProvider component was not returning any JSX, causing a render error.
-// It now returns the MentorXContext.Provider, wrapping the children and providing the context value.
 const contextValue = useMemo<IMentorXContext>(() => ({
     sessions,
     activeSessionId,

@@ -1,4 +1,5 @@
 import { initializeApp, FirebaseApp } from 'firebase/app';
+import { getAnalytics } from 'firebase/analytics';
 import { getFirestore, doc, getDoc, setDoc, Firestore } from 'firebase/firestore';
 import { User, UserDataBundle } from '../types';
 
@@ -35,6 +36,7 @@ function getDb(): Firestore | null {
     try {
         const app: FirebaseApp = initializeApp(firebaseConfig);
         db = getFirestore(app);
+        getAnalytics(app); // Initialize Firebase Analytics
     } catch (error) {
         console.error("Firebase initialization failed:", error);
         db = null;

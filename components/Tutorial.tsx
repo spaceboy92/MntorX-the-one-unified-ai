@@ -106,8 +106,6 @@ const Tutorial: React.FC = () => {
             }
 
             // Boundary checks
-            // FIX: The original cast `as number` was incorrect because tooltipPos.left is a string like "123px".
-            // We now correctly parse the string to a number before performing arithmetic operations.
             if (tooltipPos.left) {
                 const numericLeft = parseInt(String(tooltipPos.left), 10);
                 const effectiveLeft = tooltipPos.transform?.includes('translateX(-50%)') ? numericLeft - tooltipWidth / 2 : numericLeft;
