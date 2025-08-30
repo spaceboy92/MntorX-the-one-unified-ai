@@ -115,7 +115,8 @@ app.post('/api/image', async (req, res) => {
     try {
         const { prompt, aspectRatio, numberOfImages } = req.body;
         const response = await ai.models.generateImages({
-            model: 'imagen-3.0-generate-002',
+            // FIX: Updated model to 'imagen-4.0-generate-001' per coding guidelines.
+            model: 'imagen-4.0-generate-001',
             prompt,
             config: { numberOfImages, outputMimeType: 'image/jpeg', aspectRatio },
         });

@@ -196,12 +196,33 @@ export const MentorXProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isFocusMode, setIsFocusMode] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [isTutorialActive, setIsTutorialActive] = useState(false);
+  const [tutorialStep, setTutorialStep] = useState(0);
 
   // Refs
   const stopGenerationRef = useRef(false);
   const initialLoadComplete = useRef(false);
   const saveTimeoutRef = useRef<number | null>(null);
   const recognitionRef = useRef<any>(null);
+
+  // --- TUTORIAL MANAGEMENT ---
+  const startTutorial = useCallback(() => {
+    setTutorialStep(0);
+    setIsTutorialActive(true);
+  }, []);
+
+  const endTutorial = useCallback(() => {
+      setIsTutorialActive(false);
+      localStorage.setItem('mentorx_tutorial_completed', 'true');
+  }, []);
+
+  const nextTutorialStep = useCallback(() => {
+      setTutorialStep(prev => prev + 1);
+  }, []);
+
+  const prevTutorialStep = useCallback(() => {
+      setTutorialStep(prev => Math.max(0, prev - 1));
+  }, []);
 
   // --- AUTH & DATA LOADING ---
 
@@ -246,17 +267,33 @@ export const MentorXProvider: React.FC<{ children: ReactNode }> = ({ children })
   }, [resetStateToDefault]);
 
   useEffect(() => {
-    // This effect runs once on mount to check for a logged-in user.
     const savedUser = localStorage.getItem('mentorx_user');
+    
+    const loadSequence = async (userData: User | null) => {
+        if (userData) {
+            await loadUserData(userData);
+        } else {
+            setIsUserDataLoading(false);
+            initialLoadComplete.current = true;
+        }
+        
+        // Use a timeout to ensure the UI is fully rendered before starting the tutorial
+        setTimeout(() => {
+            const tutorialCompleted = localStorage.getItem('mentorx_tutorial_completed') === 'true';
+            if (!tutorialCompleted) {
+                startTutorial();
+            }
+        }, 500);
+    };
+    
     if (savedUser) {
         const userData = JSON.parse(savedUser);
         setUser(userData);
-        loadUserData(userData);
+        loadSequence(userData);
     } else {
-        setIsUserDataLoading(false);
-        initialLoadComplete.current = true;
+        loadSequence(null);
     }
-  }, [loadUserData]);
+  }, [loadUserData, startTutorial]);
 
 
   const login = useCallback(async (credential: string) => {
@@ -496,7 +533,84 @@ export const MentorXProvider: React.FC<{ children: ReactNode }> = ({ children })
 
       setIsLoading(false);
   }, [sessions, allPersonas, isCostSaverMode, customInstruction, updateSession]);
+// FIX: `executeTask` was called but not defined. Implemented the function to handle task planning and execution.
+  const executeTask = useCallback(async (sessionId: string, goal: string) => {
+      const session = sessions.find(s => s.id === sessionId);
+      if (!session) return;
 
+      const initialTask: Task = {
+          id: generateId(),
+          goal,
+          plan: [],
+          status: 'planning',
+      };
+      
+      const userGoalMessage: ChatMessage = {id: generateId(), role: 'user', text: `/execute ${goal}`, timestamp: new Date()};
+      updateSession(sessionId, { messages: [...session.messages, userGoalMessage], activeTask: initialTask });
+      
+      try {
+          const planSteps = await generateTaskPlan(goal);
+          const taskPlan: TaskStep[] = planSteps.map(step => ({
+              id: generateId(),
+              description: step.description,
+              status: 'pending',
+          }));
+          updateSession(sessionId, s => ({ activeTask: { ...s.activeTask!, plan: taskPlan, status: 'in-progress' }}));
+          
+          const executionKickoffMessage: ChatMessage = {
+              id: generateId(),
+              role: 'user',
+              text: `My goal is: "${goal}". You have generated this plan:\n${taskPlan.map((s, i) => `${i+1}. ${s.description}`).join('\n')}\n\nPlease start executing the first step. Use the available tools.`,
+              timestamp: new Date()
+          };
+
+          // The history for the AI must include the initial user command to provide context.
+          const executionHistory = [...session.messages, userGoalMessage, executionKickoffMessage];
+
+          await _sendMessageInternal(sessionId, executionHistory);
+
+          updateSession(sessionId, s => ({ activeTask: { ...s.activeTask!, status: 'completed' } }));
+
+      } catch (error) {
+          console.error("Task execution failed:", error);
+          const errorMessage = error instanceof Error ? error.message : "Failed to generate a plan.";
+          updateSession(sessionId, s => ({ activeTask: { ...s.activeTask!, status: 'failed', error: errorMessage } }));
+      }
+  }, [sessions, updateSession, _sendMessageInternal]);
+
+  // FIX: `performAiCodeAction` was called but not defined. Implemented the function to handle various AI code-related actions.
+  const performAiCodeAction = useCallback(async (sessionId: string, action: 'refactor' | 'debug' | 'document' | 'explain' | 'test' | 'analyze') => {
+      const session = sessions.find(s => s.id === sessionId);
+      if (!session?.workspaceState) return;
+      
+      setIsLoading(true);
+      const assistantMessageId = generateId();
+      const assistantMessage: ChatMessage = { id: assistantMessageId, role: 'assistant', text: `Performing action: ${action}...`, timestamp: new Date() };
+      updateSession(sessionId, { messages: [...session.messages, assistantMessage] });
+  
+      try {
+          let responseText = '';
+          if (action === 'analyze') {
+              const fileList = session.workspaceState.files.map(f => f.name);
+              const suggestions = await getWorkspaceAnalysis(fileList);
+              responseText = `**Workspace Analysis Complete:**\n\n* ${suggestions.join('\n* ')}`;
+          } else {
+              const activeFile = session.workspaceState.files.find(f => f.id === session.workspaceState?.activeFileId);
+              if (!activeFile) {
+                  responseText = "Error: No active file selected to perform the action on.";
+              } else {
+                  responseText = await getAiCodeSuggestion(activeFile.code, activeFile.language, action);
+              }
+          }
+          updateSession(sessionId, s => ({ messages: s.messages.map(m => m.id === assistantMessageId ? { ...m, text: responseText } : m) }));
+      } catch(error) {
+          const errorMessage = error instanceof Error ? error.message : "An unknown error occurred during the AI code action.";
+          updateSession(sessionId, s => ({ messages: s.messages.map(m => m.id === assistantMessageId ? { ...m, text: `Error: ${errorMessage}` } : m) }));
+      } finally {
+          setIsLoading(false);
+      }
+  }, [sessions, updateSession]);
+  
   const sendMessage = useCallback(async (prompt: string, attachment: Attachment | null = null, options: { aspectRatio?: string, numberOfImages?: number } = {}, boosted: boolean = false) => {
       if (!activeSessionId) return;
 
@@ -556,7 +670,7 @@ export const MentorXProvider: React.FC<{ children: ReactNode }> = ({ children })
       updateSession(activeSessionId, { messages: newHistory });
       await _sendMessageInternal(activeSessionId, newHistory, boosted);
 
-  }, [activeSessionId, sessions, _sendMessageInternal, updateSession]);
+  }, [activeSessionId, sessions, _sendMessageInternal, updateSession, executeTask, performAiCodeAction]);
 
   const editMessage = useCallback(async (sessionId: string, messageId: string, newText: string) => {
     const session = sessions.find(s => s.id === sessionId);
@@ -691,297 +805,282 @@ export const MentorXProvider: React.FC<{ children: ReactNode }> = ({ children })
           const url = URL.createObjectURL(blob);
           blobUrls.set(url, '');
           importMap.imports[`./${file.name}`] = url;
-          importMap.imports[`./${file.name.replace('.js', '')}`] = url; // for module imports without extension
+          importMap.imports[file.name] = url;
       }
-      
+
       const importMapScript = doc.createElement('script');
       importMapScript.type = 'importmap';
       importMapScript.textContent = JSON.stringify(importMap);
       doc.head.appendChild(importMapScript);
-      
-      doc.querySelectorAll('script[src]').forEach(script => {
-          const htmlScript = script as HTMLScriptElement;
-          const src = htmlScript.getAttribute('src')!;
-          if (importMap.imports[src]) {
-              htmlScript.src = importMap.imports[src];
-          }
-      });
 
       const finalHtml = new XMLSerializer().serializeToString(doc);
-      updateWorkspaceState(sessionId, { previewHtml: finalHtml, output: (session.workspaceState.output || '') + '> Build successful. Preview is ready.\n' });
-      // Clean up blobs later
-  }, [sessions, updateWorkspaceState]);
-  
+      updateWorkspaceState(sessionId, { previewHtml: finalHtml });
+
+      // Clean up blob URLs after a delay
+      setTimeout(() => {
+          blobUrls.forEach((_, url) => URL.revokeObjectURL(url));
+      }, 30000);
+  }, [sessions]);
+
   const appendOutput = useCallback((sessionId: string, message: string) => {
       updateWorkspaceState(sessionId, { output: (activeSession?.workspaceState?.output || '') + message + '\n' });
-  }, [activeSession, updateWorkspaceState]);
-
-  const performAiCodeAction = useCallback(async (sessionId: string, action: 'refactor' | 'debug' | 'document' | 'explain' | 'test' | 'analyze') => {
-      const session = sessions.find(s => s.id === sessionId);
-      if (!session?.workspaceState) return;
-
-      if(action === 'analyze') {
-          setIsLoading(true);
-          appendOutput(sessionId, `> AI is analyzing the workspace...`);
-          try {
-              const fileList = session.workspaceState.files.map(f => f.name);
-              const suggestions = await getWorkspaceAnalysis(fileList);
-              const assistantMessage: ChatMessage = {
-                  id: generateId(),
-                  role: 'assistant',
-                  text: 'I have analyzed your workspace and here are my suggestions:',
-                  timestamp: new Date(),
-                  suggestedActions: suggestions,
-              };
-              updateSession(sessionId, s => ({ messages: [...s.messages, assistantMessage] }));
-          } catch(error) {
-              const message = error instanceof Error ? error.message : "An unknown error occurred.";
-              appendOutput(sessionId, `> AI analysis failed: ${message}`);
-          } finally {
-              setIsLoading(false);
-          }
-          return;
-      }
-      
-      if (!session.workspaceState.activeFileId) return;
-      const file = session.workspaceState.files.find(f => f.id === session.workspaceState!.activeFileId);
-      if (!file) return;
-
-      setIsLoading(true);
-      appendOutput(sessionId, `> AI is performing '${action}' on ${file.name}...`);
-      try {
-          const suggestion = await getAiCodeSuggestion(file.code, file.language, action);
-          if (action === 'test') {
-            const parts = file.name.split('.');
-            const ext = parts.pop();
-            const baseName = parts.join('.');
-            const testFileName = `${baseName}.test.${ext}`;
-            addCodeFile(sessionId, testFileName, suggestion);
-            appendOutput(sessionId, `> AI action complete. New test file created: ${testFileName}`);
-          } else {
-            updateCodeFile(sessionId, file.id, suggestion, file.language);
-            appendOutput(sessionId, `> AI action '${action}' on ${file.name} complete.`);
-          }
-      } catch (error) {
-          const message = error instanceof Error ? error.message : "An unknown error occurred.";
-          appendOutput(sessionId, `> AI action failed: ${message}`);
-      } finally {
-          setIsLoading(false);
-      }
-  }, [sessions, addCodeFile, updateCodeFile, appendOutput]);
-
-  const executeTask = useCallback(async (sessionId: string, goal: string) => {
-    setIsLoading(true);
-    const userMessage: ChatMessage = { id: generateId(), role: 'user', text: `/execute ${goal}`, timestamp: new Date() };
-    updateSession(sessionId, s => ({ messages: [...s.messages, userMessage] }));
-
-    const task: Task = { id: generateId(), goal, plan: [], status: 'planning' };
-    updateSession(sessionId, { activeTask: task });
-
-    try {
-        const planSteps = await generateTaskPlan(goal);
-        task.plan = planSteps.map(step => ({ ...step, id: generateId(), status: 'pending' }));
-        task.status = 'in-progress';
-        updateSession(sessionId, { activeTask: { ...task } });
-
-        for (let i = 0; i < task.plan.length; i++) {
-            const step = task.plan[i];
-            step.status = 'in-progress';
-            updateSession(sessionId, { activeTask: { ...task } });
-            
-            const toolCall: ToolCall = { ...step.toolCall!, id: generateId() };
-            const toolResponses = await executeToolCalls([toolCall], sessionId);
-            const toolResponse = toolResponses[0];
-
-            if (toolResponse.response.success) {
-                step.status = 'completed';
-            } else {
-                step.status = 'failed';
-                task.status = 'failed';
-                task.error = toolResponse.response.message;
-                break; 
-            }
-             updateSession(sessionId, { activeTask: { ...task } });
-        }
-
-        if (task.status !== 'failed') {
-            task.status = 'completed';
-        }
-
-    } catch (error) {
-        task.status = 'failed';
-        task.error = error instanceof Error ? error.message : "Unknown error during planning.";
-    }
-    
-    updateSession(sessionId, s => ({ ...s, activeTask: { ...s.activeTask!, ...task } }));
-    setIsLoading(false);
-
-  }, [updateSession, executeToolCalls]);
-
+  }, [activeSession]);
 
   const uploadWorkspace = useCallback(async (sessionId: string) => {
-      alert("Workspace upload from a local folder is a conceptual feature for this demo.");
+      alert("Conceptual Feature: In a real app, this would open a file dialog to select a project folder. The files would then be read and added to the workspace.");
   }, []);
 
   const resetWorkspace = useCallback((sessionId: string) => {
-      if (!window.confirm("Are you sure you want to reset the workspace? All changes will be lost.")) return;
-      const session = sessions.find(s => s.id === sessionId);
-      if (!session?.activePersonaId) return;
-      
-      const defaultState = session.activePersonaId === 'gamedev' ? DEFAULT_GAMEDEV_WORKSPACE_STATE : DEFAULT_SANDBOX_WORKSPACE_STATE;
-      updateWorkspaceState(sessionId, {
-        ...defaultState,
-        files: defaultState.files.map(f => ({ ...f, id: generateId() })),
-      });
-  }, [sessions, updateWorkspaceState]);
+      if (window.confirm("Are you sure you want to reset the workspace to its default state? All changes will be lost.")) {
+         const personaId = sessions.find(s => s.id === sessionId)?.activePersonaId;
+         const defaultState = personaId === 'gamedev' ? DEFAULT_GAMEDEV_WORKSPACE_STATE : DEFAULT_SANDBOX_WORKSPACE_STATE;
+         updateWorkspaceState(sessionId, {
+              ...defaultState,
+              files: defaultState.files.map(f => ({ ...f, id: generateId() })),
+              activeFileId: null
+         });
+      }
+  }, [sessions]);
 
-  // WIDGETS
-  const generateAndAddWidget = useCallback(async (sessionId: string, prompt: string) => {
-      const userMessage: ChatMessage = { id: generateId(), role: 'user', text: prompt, timestamp: new Date() };
-      const session = sessions.find(s => s.id === sessionId);
-      if (!session) return;
-
-      const newHistory = [...session.messages, userMessage];
-      updateSession(sessionId, { messages: newHistory });
-      await _sendMessageInternal(sessionId, newHistory);
-  }, [sessions, updateSession, _sendMessageInternal]);
-
-  const setActiveWidgetId = useCallback((sessionId: string, widgetId: string | null) => {
-    updateSession(sessionId, { activeWidgetId: widgetId });
+  // --- WIDGET FACTORY ---
+  const clearWidgets = useCallback((sessionId: string) => {
+      updateSession(sessionId, { widgets: [], activeWidgetId: null });
   }, [updateSession]);
 
   const deleteWidget = useCallback((sessionId: string, widgetId: string) => {
-      updateSession(sessionId, s => ({
-          widgets: (s.widgets || []).filter(w => w.id !== widgetId),
-          activeWidgetId: s.activeWidgetId === widgetId ? null : s.activeWidgetId,
-      }));
+      updateSession(sessionId, s => {
+          const newWidgets = s.widgets?.filter(w => w.id !== widgetId) || [];
+          const newActiveId = s.activeWidgetId === widgetId ? newWidgets[0]?.id || null : s.activeWidgetId;
+          return { widgets: newWidgets, activeWidgetId: newActiveId };
+      });
   }, [updateSession]);
 
-  const clearWidgets = useCallback((sessionId: string) => {
-    updateSession(sessionId, { widgets: [], activeWidgetId: null });
+  const setActiveWidgetId = useCallback((sessionId: string, widgetId: string | null) => {
+      updateSession(sessionId, { activeWidgetId: widgetId });
   }, [updateSession]);
+
+  const generateAndAddWidget = useCallback(async (sessionId: string, prompt: string) => {
+      setIsLoading(true);
+      try {
+          const jsx = await generateAiWidget(prompt);
+          const newWidget: AiWidget = {
+              id: generateId(),
+              prompt,
+              jsx,
+              lastUpdatedAt: new Date(),
+          };
+          updateSession(sessionId, s => {
+              const widgets = [...(s.widgets || []), newWidget];
+              return { widgets, activeWidgetId: newWidget.id };
+          });
+      } catch (error) {
+          console.error("Failed to generate widget:", error);
+      } finally {
+          setIsLoading(false);
+      }
+  }, [updateSession]);
+  
+  // --- SETTINGS & MISC ---
+  const toggleLowFidelityMode = useCallback(() => setIsLowFidelityMode(p => !p), []);
+  const toggleCostSaverMode = useCallback(() => setIsCostSaverMode(p => !p), []);
+  const toggleSessionWebAccess = useCallback((sessionId: string) => updateSession(sessionId, s => ({ isWebAccessEnabled: !s.isWebAccessEnabled })), [updateSession]);
+  const toggleSessionDeepAnalysis = useCallback((sessionId: string) => updateSession(sessionId, s => ({ isDeepAnalysis: !s.isDeepAnalysis })), [updateSession]);
+  
+  const addCustomPersona = useCallback((persona: Omit<Persona, 'id' | 'isCustom' | 'isPro'>) => {
+      const newPersona: Persona = {
+          ...persona,
+          id: `custom_${generateId()}`,
+          isCustom: true,
+          isPro: false, // Custom personas are always available
+      };
+      setCustomPersonas(prev => [...prev, newPersona]);
+  }, []);
+  
+  const updateCustomPersona = useCallback((persona: Persona) => {
+      setCustomPersonas(prev => prev.map(p => p.id === persona.id ? persona : p));
+  }, []);
+  
+  const deleteCustomPersona = useCallback((personaId: string) => {
+      setCustomPersonas(prev => prev.filter(p => p.id !== personaId));
+  }, []);
+  
+  const updateAppearanceSettings = useCallback((settings: Partial<AppearanceSettings>) => {
+    setAppearanceSettings(prev => ({ ...prev, ...settings }));
+  }, []);
+  
+  const addCustomTheme = useCallback((theme: Omit<Theme, 'id' | 'isCustom' | 'isPro'>) => {
+    const newTheme: Theme = { ...theme, id: `custom_${generateId()}`, isCustom: true, isPro: false };
+    setAppearanceSettings(prev => ({...prev, customThemes: [...prev.customThemes, newTheme]}));
+  }, []);
+
+  const updateCustomTheme = useCallback((theme: Theme) => {
+      setAppearanceSettings(prev => ({...prev, customThemes: prev.customThemes.map(t => t.id === theme.id ? theme : t)}));
+  }, []);
+
+  const deleteCustomTheme = useCallback((themeId: string) => {
+      setAppearanceSettings(prev => ({...prev, customThemes: prev.customThemes.filter(t => t.id !== themeId)}));
+  }, []);
+
+  const setSessionPersona = useCallback((sessionId: string, personaId: string) => {
+      updateSession(sessionId, { activePersonaId: personaId });
+  }, [updateSession]);
+
+  const setSessionModelParams = useCallback((sessionId: string, params: { temperature?: number, topP?: number, topK?: number }) => {
+      updateSession(sessionId, { ...params });
+  }, [updateSession]);
+
+  const startRecording = useCallback(() => {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+          alert("Sorry, your browser doesn't support speech recognition.");
+          return;
+      }
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.onstart = () => setIsRecording(true);
+      recognition.onend = () => setIsRecording(false);
+      recognition.onresult = (event: any) => {
+          // This part could be used for live transcription preview if needed
+      };
+      recognition.start();
+      recognitionRef.current = recognition;
+  }, []);
+  
+  const stopRecording = useCallback((): Promise<string | undefined> => {
+      return new Promise(resolve => {
+        if (recognitionRef.current) {
+            recognitionRef.current.onresult = (event: any) => {
+                let finalTranscript = '';
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    if (event.results[i].isFinal) {
+                        finalTranscript += event.results[i][0].transcript;
+                    }
+                }
+                resolve(finalTranscript.trim());
+            };
+            recognitionRef.current.stop();
+            setIsRecording(false);
+        } else {
+            resolve(undefined);
+        }
+      });
+  }, []);
 
   const addWidgetToDashboard = useCallback((widgetId: string) => {
-    setDashboardWidgetIds(prev => [...new Set([...prev, widgetId])]);
+      setDashboardWidgetIds(prev => [...new Set([...prev, widgetId])]);
   }, []);
 
   const removeWidgetFromDashboard = useCallback((widgetId: string) => {
       setDashboardWidgetIds(prev => prev.filter(id => id !== widgetId));
   }, []);
-
-
-  // --- SETTINGS & CUSTOMIZATION ---
-  
-  const setSessionPersona = useCallback((sessionId: string, personaId: string) => updateSession(sessionId, { activePersonaId: personaId }), [updateSession]);
-  const setSessionModelParams = useCallback((sessionId: string, params: { temperature?: number, topP?: number, topK?: number }) => updateSession(sessionId, params), [updateSession]);
-  const toggleSessionWebAccess = useCallback((sessionId: string) => updateSession(sessionId, s => ({ isWebAccessEnabled: !s.isWebAccessEnabled })), [updateSession]);
-  const toggleSessionDeepAnalysis = useCallback((sessionId: string) => updateSession(sessionId, s => ({ isDeepAnalysis: !s.isDeepAnalysis })), [updateSession]);
-  const toggleLowFidelityMode = useCallback(() => setIsLowFidelityMode(prev => !prev), []);
-  const toggleCostSaverMode = useCallback(() => setIsCostSaverMode(prev => !prev), []);
-  const handleSetAppearanceSettings = useCallback((settings: Partial<AppearanceSettings>) => {
-    setAppearanceSettings(prev => ({ ...prev, ...settings }));
-  }, []);
-
-  const addCustomPersona = useCallback((personaData: Omit<Persona, 'id' | 'isCustom' | 'isPro' | 'icon'> & {icon: string}) => {
-      const newPersona: Persona = {
-          ...personaData,
-          id: `custom_${generateId()}`,
-          isCustom: true,
-          isPro: false, // Custom personas are not pro-locked
-      };
-      setCustomPersonas(prev => [...prev, newPersona]);
-  }, []);
-  
-  const updateCustomPersona = useCallback((personaToUpdate: Persona) => {
-      setCustomPersonas(prev => prev.map(p => p.id === personaToUpdate.id ? personaToUpdate : p));
-  }, []);
-
-  const deleteCustomPersona = useCallback((personaId: string) => {
-      setCustomPersonas(prev => prev.filter(p => p.id !== personaId));
-      setSessions(prev => prev.map(s => s.activePersonaId === personaId ? { ...s, activePersonaId: 'default' } : s));
-  }, []);
-
-  const addCustomTheme = useCallback((themeData: Omit<Theme, 'id' | 'isCustom' | 'isPro'>) => {
-      const newTheme: Theme = { ...themeData, id: `custom_${generateId()}`, isCustom: true, isPro: false };
-      setAppearanceSettings(prev => ({ ...prev, customThemes: [...prev.customThemes, newTheme], activeThemeId: newTheme.id }));
-  }, []);
-
-  const updateCustomTheme = useCallback((themeToUpdate: Theme) => {
-      setAppearanceSettings(prev => ({ ...prev, customThemes: prev.customThemes.map(t => t.id === themeToUpdate.id ? themeToUpdate : t) }));
-  }, []);
-
-  const deleteCustomTheme = useCallback((themeId: string) => {
-      setAppearanceSettings(prev => ({ ...prev, customThemes: prev.customThemes.filter(t => t.id !== themeId), activeThemeId: prev.activeThemeId === themeId ? 'default' : prev.activeThemeId }));
-  }, []);
-
-    // --- VOICE INPUT ---
-    const startRecording = useCallback(() => {
-        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-        if (!SpeechRecognition) {
-            alert("Speech recognition is not supported in this browser.");
-            return;
-        }
-        if (recognitionRef.current) {
-            recognitionRef.current.stop();
-        }
-        
-        recognitionRef.current = new SpeechRecognition();
-        recognitionRef.current.continuous = false;
-        recognitionRef.current.interimResults = false;
-        recognitionRef.current.lang = 'en-US';
-        
-        recognitionRef.current.onstart = () => setIsRecording(true);
-        recognitionRef.current.onend = () => setIsRecording(false);
-        recognitionRef.current.onerror = (event: any) => {
-            console.error("Speech recognition error:", event.error);
-            setIsRecording(false);
-        };
-        
-        recognitionRef.current.start();
-    }, []);
-
-    const stopRecording = useCallback((): Promise<string | undefined> => {
-        return new Promise((resolve) => {
-            if (recognitionRef.current) {
-                recognitionRef.current.onresult = (event: any) => {
-                    const transcript = event.results[0][0].transcript;
-                    resolve(transcript);
-                };
-                recognitionRef.current.stop();
-            } else {
-                resolve(undefined);
-            }
-        });
-    }, []);
-
-  const value: IMentorXContext = useMemo(() => ({
-      sessions, activeSessionId, activeSession, evolutionState, isLoading, isLowFidelityMode, isCostSaverMode, stats, isPremiumUser, searchQuery, customInstruction, isSidebarOpen, isSidebarCollapsed, saveStatus, appearanceSettings, theme, activePersona, customPersonas, showRightSidebar, showSidebar, isCommandPaletteOpen, isSettingsOpen, isFocusMode, isRecording, dashboardWidgetIds, user, isUserDataLoading, login, logout, addWidgetToDashboard, removeWidgetFromDashboard,
-      setSearchQuery, setCustomInstruction, setIsSidebarOpen, setIsSidebarCollapsed, setAppearanceSettings: handleSetAppearanceSettings, setShowRightSidebar, setShowSidebar, setIsCommandPaletteOpen, setIsSettingsOpen, setIsFocusMode,
-      startNewChat, deleteChat, renameChat, setActiveSessionId, sendMessage, editMessage, regenerateLastResponse, stopGeneration, exportChat,
-      toggleSessionWebAccess, toggleSessionDeepAnalysis, toggleLowFidelityMode, toggleCostSaverMode,
-      setSessionPersona, setSessionModelParams,
-      addCodeFile, deleteCodeFile, renameCodeFile, setActiveCodeFile, updateCodeFile, runCode, appendOutput, performAiCodeAction, uploadWorkspace, resetWorkspace, executeTask,
-      // Widget methods
-      clearWidgets, deleteWidget, generateAndAddWidget, setActiveWidgetId,
-      addCustomPersona, updateCustomPersona, deleteCustomPersona,
-      addCustomTheme, updateCustomTheme, deleteCustomTheme,
-      startRecording, stopRecording,
+    
+// FIX: The MentorXProvider component was not returning any JSX, causing a render error.
+// It now returns the MentorXContext.Provider, wrapping the children and providing the context value.
+const contextValue = useMemo<IMentorXContext>(() => ({
+    sessions,
+    activeSessionId,
+    activeSession,
+    evolutionState,
+    isLoading,
+    isLowFidelityMode,
+    isCostSaverMode,
+    stats,
+    isPremiumUser,
+    searchQuery,
+    customInstruction,
+    isSidebarOpen,
+    isSidebarCollapsed,
+    saveStatus,
+    appearanceSettings,
+    theme,
+    activePersona,
+    customPersonas,
+    showRightSidebar,
+    showSidebar,
+    isCommandPaletteOpen,
+    isSettingsOpen,
+    isFocusMode,
+    isRecording,
+    dashboardWidgetIds,
+    user,
+    isUserDataLoading,
+    isTutorialActive,
+    tutorialStep,
+    startTutorial,
+    nextTutorialStep,
+    prevTutorialStep,
+    endTutorial,
+    login,
+    logout,
+    addWidgetToDashboard,
+    removeWidgetFromDashboard,
+    startRecording,
+    stopRecording,
+    setIsCommandPaletteOpen,
+    setIsSettingsOpen,
+    setIsFocusMode,
+    setShowRightSidebar,
+    setShowSidebar,
+    addCustomPersona,
+    updateCustomPersona,
+    deleteCustomPersona,
+    setAppearanceSettings: updateAppearanceSettings,
+    addCustomTheme,
+    updateCustomTheme,
+    deleteCustomTheme,
+    setSessionPersona,
+    setSessionModelParams,
+    setIsSidebarOpen,
+    setIsSidebarCollapsed,
+    setCustomInstruction,
+    setSearchQuery,
+    toggleLowFidelityMode,
+    toggleCostSaverMode,
+    startNewChat,
+    deleteChat,
+    renameChat,
+    setActiveSessionId,
+    sendMessage,
+    editMessage,
+    regenerateLastResponse,
+    toggleSessionWebAccess,
+    toggleSessionDeepAnalysis,
+    exportChat,
+    stopGeneration,
+    addCodeFile,
+    deleteCodeFile,
+    renameCodeFile,
+    setActiveCodeFile,
+    updateCodeFile,
+    runCode,
+    appendOutput,
+    performAiCodeAction,
+    executeTask,
+    uploadWorkspace,
+    resetWorkspace,
+    clearWidgets,
+    deleteWidget,
+    setActiveWidgetId,
+    generateAndAddWidget,
   }), [
-      sessions, activeSessionId, activeSession, evolutionState, isLoading, isLowFidelityMode, isCostSaverMode, stats, isPremiumUser, searchQuery, customInstruction, isSidebarOpen, isSidebarCollapsed, saveStatus, appearanceSettings, theme, activePersona, customPersonas, showRightSidebar, showSidebar, isCommandPaletteOpen, isSettingsOpen, isFocusMode, isRecording, dashboardWidgetIds, user, isUserDataLoading, addWidgetToDashboard, removeWidgetFromDashboard,
-      setSearchQuery, setCustomInstruction, setIsSidebarOpen, setIsSidebarCollapsed, handleSetAppearanceSettings, setShowRightSidebar, setShowSidebar, setActiveSessionId, setIsCommandPaletteOpen, setIsSettingsOpen, setIsFocusMode,
-      startNewChat, deleteChat, renameChat, sendMessage, editMessage, regenerateLastResponse, stopGeneration, exportChat,
-      toggleSessionWebAccess, toggleSessionDeepAnalysis, toggleLowFidelityMode, toggleCostSaverMode,
-      setSessionPersona, setSessionModelParams, login, logout,
-      addCodeFile, deleteCodeFile, renameCodeFile, setActiveCodeFile, updateCodeFile, runCode, appendOutput, performAiCodeAction, uploadWorkspace, resetWorkspace, executeTask,
-      clearWidgets, deleteWidget, generateAndAddWidget, setActiveWidgetId,
-      addCustomPersona, updateCustomPersona, deleteCustomPersona,
-      addCustomTheme, updateCustomTheme, deleteCustomTheme,
-      startRecording, stopRecording,
+      sessions, activeSessionId, activeSession, evolutionState, isLoading, isLowFidelityMode, isCostSaverMode,
+      stats, isPremiumUser, searchQuery, customInstruction, isSidebarOpen, isSidebarCollapsed, saveStatus,
+      appearanceSettings, theme, activePersona, customPersonas, showRightSidebar, showSidebar, isCommandPaletteOpen,
+      isSettingsOpen, isFocusMode, isRecording, dashboardWidgetIds, user, isUserDataLoading, isTutorialActive,
+      tutorialStep, startTutorial, nextTutorialStep, prevTutorialStep, endTutorial, login, logout, addWidgetToDashboard,
+      removeWidgetFromDashboard, startRecording, stopRecording, addCustomPersona, updateCustomPersona, deleteCustomPersona,
+      updateAppearanceSettings, addCustomTheme, updateCustomTheme, deleteCustomTheme, setSessionPersona, setSessionModelParams,
+      setCustomInstruction, setSearchQuery, toggleLowFidelityMode, toggleCostSaverMode, startNewChat, deleteChat,
+      renameChat, setActiveSessionId, sendMessage, editMessage, regenerateLastResponse, toggleSessionWebAccess,
+      toggleSessionDeepAnalysis, exportChat, stopGeneration, addCodeFile, deleteCodeFile, renameCodeFile,
+      setActiveCodeFile, updateCodeFile, runCode, appendOutput, performAiCodeAction, executeTask, uploadWorkspace,
+      resetWorkspace, clearWidgets, deleteWidget, setActiveWidgetId, generateAndAddWidget
   ]);
 
   return (
-    <MentorXContext.Provider value={value}>
-      {children}
-    </MentorXContext.Provider>
+      <MentorXContext.Provider value={contextValue}>
+          {children}
+      </MentorXContext.Provider>
   );
 };

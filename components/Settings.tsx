@@ -26,6 +26,7 @@ export const Settings = () => {
         updateCustomTheme,
         deleteCustomTheme,
         setIsSettingsOpen,
+        startTutorial,
     } = useMentorX();
 
     const [activeTab, setActiveTab] = useState(TABS[0]);
@@ -140,42 +141,55 @@ export const Settings = () => {
                                 <div>
                                     <label htmlFor="temp" className="block text-sm font-medium" style={{color: 'var(--color-text-primary)'}}>Temperature: <span className="font-mono">{localModelParams.temperature?.toFixed(2) || 'N/A'}</span></label>
                                     <p className="text-xs mb-1" style={{color: 'var(--color-text-secondary)'}}>Controls randomness. Higher is more creative.</p>
-                                    <input id="temp" type="range" min="0" max="1" step="0.05" value={localModelParams.temperature ?? 0.7} onChange={e => setLocalModelParams(p => ({...p, temperature: parseFloat(e.target.value)}))} className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer" />
+                                    <input id="temp" type="range" min="0" max="1" step="0.05" value={localModelParams.temperature || 0.7} onChange={e => setLocalModelParams({...localModelParams, temperature: parseFloat(e.target.value)})} className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer" />
                                 </div>
                                 <div>
-                                    <label htmlFor="topP" className="block text-sm font-medium" style={{color: 'var(--color-text-primary)'}}>Top P: <span className="font-mono">{localModelParams.topP?.toFixed(2) || 'N/A'}</span></label>
-                                     <p className="text-xs mb-1" style={{color: 'var(--color-text-secondary)'}}>Controls nucleus sampling. Higher is more diverse.</p>
-                                    <input id="topP" type="range" min="0" max="1" step="0.05" value={localModelParams.topP ?? 0.95} onChange={e => setLocalModelParams(p => ({...p, topP: parseFloat(e.target.value)}))} className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer" />
+                                    <label htmlFor="topP" className="block text-sm font-medium" style={{color: 'var(--color-text-primary)'}}>Top-P: <span className="font-mono">{localModelParams.topP?.toFixed(2) || 'N/A'}</span></label>
+                                     <p className="text-xs mb-1" style={{color: 'var(--color-text-secondary)'}}>Filters tokens based on cumulative probability.</p>
+                                    <input id="topP" type="range" min="0" max="1" step="0.05" value={localModelParams.topP || 0.95} onChange={e => setLocalModelParams({...localModelParams, topP: parseFloat(e.target.value)})} className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer" />
                                 </div>
-                                 <div>
-                                    <label htmlFor="topK" className="block text-sm font-medium" style={{color: 'var(--color-text-primary)'}}>Top K: <span className="font-mono">{localModelParams.topK || 'N/A'}</span></label>
-                                    <p className="text-xs mb-1" style={{color: 'var(--color-text-secondary)'}}>Limits sampling to K most likely tokens.</p>
-                                    <input id="topK" type="range" min="1" max="100" step="1" value={localModelParams.topK ?? 40} onChange={e => setLocalModelParams(p => ({...p, topK: parseInt(e.target.value)}))} className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer" />
-                                </div>
+                                {!activeSession && <p className="text-xs text-center text-yellow-400">Start a chat to edit model parameters.</p>}
                             </fieldset>
+                        </div>
+                        <div className="border-t pt-6" style={{borderColor: 'var(--color-border)'}}>
+                            <h4 className="text-lg font-semibold mb-2" style={{color: 'var(--color-text-primary)'}}>Custom Instruction</h4>
+                             <p className="text-sm mb-4" style={{color: 'var(--color-text-secondary)'}}>Provide a custom instruction that will be sent with every prompt to guide the AI's responses globally.</p>
+                            <textarea
+                                value={localInstruction}
+                                onChange={e => setLocalInstruction(e.target.value)}
+                                rows={5}
+                                placeholder="e.g., Always respond in the style of a 1920s detective."
+                                className="w-full bg-black/20 border rounded-lg p-3 text-sm focus:ring-1"
+                                style={{borderColor: 'var(--color-border)', '--tw-ring-color': 'var(--color-accent)'} as React.CSSProperties}
+                            />
                         </div>
                     </div>
                 );
             case 'Personas':
                 return (
-                    <div>
+                     <div>
                         <div className="flex justify-between items-center mb-4">
-                            <h4 className="text-lg font-semibold" style={{color: 'var(--color-text-primary)'}}>Manage AI Personas</h4>
-                            <button onClick={() => handleOpenPersonaEditor()} className="flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-semibold hover:opacity-90" style={{backgroundColor: 'var(--color-accent)', color: 'var(--color-accent-text)'}}><PlusIcon /> New Persona</button>
+                            <div>
+                                <h4 className="text-lg font-semibold" style={{color: 'var(--color-text-primary)'}}>Manage Personas</h4>
+                                <p className="text-sm" style={{color: 'var(--color-text-secondary)'}}>Create or edit custom AI personas for specialized tasks.</p>
+                            </div>
+                            <button onClick={() => handleOpenPersonaEditor()} className="flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg" style={{backgroundColor: 'var(--color-accent)', color: 'var(--color-accent-text)'}}>
+                                <PlusIcon /> New Persona
+                            </button>
                         </div>
-                        <div className="space-y-2 max-h-80 overflow-y-auto">
-                            {customPersonas.map(p => (
-                                <div key={p.id} className="p-3 rounded-lg flex justify-between items-center" style={{backgroundColor: 'var(--color-app-bg)'}}>
-                                    <div className="flex items-center gap-3">
-                                        <span className="text-2xl">{renderIcon(p.icon)}</span>
+                        <div className="space-y-2">
+                            {customPersonas.map(persona => (
+                                <div key={persona.id} className="p-3 rounded-lg flex justify-between items-start" style={{backgroundColor: 'var(--color-panel-bg)'}}>
+                                    <div className="flex items-start gap-3">
+                                        <div className="w-8 h-8 flex items-center justify-center rounded-md text-xl shrink-0" style={{color: 'var(--color-accent)'}}>{renderIcon(persona.icon)}</div>
                                         <div>
-                                            <p className="font-bold">{p.name}</p>
-                                            <p className="text-xs text-gray-400 truncate max-w-xs">{p.description}</p>
+                                            <h5 className="font-semibold" style={{color: 'var(--color-text-primary)'}}>{persona.name}</h5>
+                                            <p className="text-xs" style={{color: 'var(--color-text-secondary)'}}>{persona.description}</p>
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-2">
-                                        <button onClick={() => handleOpenPersonaEditor(p)} className="p-2 rounded-full hover:bg-white/10"><PencilIcon /></button>
-                                        <button onClick={() => window.confirm(`Delete ${p.name}?`) && deleteCustomPersona(p.id)} className="p-2 rounded-full hover:bg-red-500/20 text-red-400"><TrashIcon /></button>
+                                        <button onClick={() => handleOpenPersonaEditor(persona)} className="p-2 text-gray-400 hover:text-white"><PencilIcon /></button>
+                                        <button onClick={() => deleteCustomPersona(persona.id)} className="p-2 text-gray-400 hover:text-red-400"><TrashIcon /></button>
                                     </div>
                                 </div>
                             ))}
@@ -183,213 +197,255 @@ export const Settings = () => {
                     </div>
                 );
             case 'Appearance':
-                 return (
-                    <div className="space-y-6">
-                       <div>
-                           <div className="flex justify-between items-center mb-2">
-                                <h4 className="text-lg font-semibold" style={{color: 'var(--color-text-primary)'}}>Theme</h4>
-                                <button onClick={() => handleOpenThemeEditor()} className="flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-semibold hover:opacity-90" style={{backgroundColor: 'var(--color-accent)', color: 'var(--color-accent-text)'}}><PlusIcon /> New Theme</button>
-                           </div>
-                            <div className="flex gap-2 items-center">
-                               <select value={localAppearance.activeThemeId} onChange={e => setLocalAppearance(p => ({...p, activeThemeId: e.target.value}))} className="w-full bg-black/20 p-2 rounded-md border border-slate-600 focus:ring-violet-500">
-                                   <optgroup label="Default Themes">
-                                    {THEME_OPTIONS.map(t => <option key={t.id} value={t.id} disabled={t.isPro && !isPremiumUser}>{t.name}{t.isPro && !isPremiumUser ? ' (Pro)' : ''}</option>)}
-                                   </optgroup>
-                                   {localAppearance.customThemes.length > 0 && <optgroup label="My Themes">
-                                    {localAppearance.customThemes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                                   </optgroup>}
-                               </select>
-                                <button onClick={() => handleOpenThemeEditor(allThemes.find(t => t.id === localAppearance.activeThemeId))} disabled={!allThemes.find(t => t.id === localAppearance.activeThemeId)?.isCustom} className="p-2 rounded-md hover:bg-white/10 disabled:opacity-50"><PencilIcon/></button>
-                               <button onClick={() => window.confirm('Delete theme?') && deleteCustomTheme(localAppearance.activeThemeId)} disabled={!allThemes.find(t => t.id === localAppearance.activeThemeId)?.isCustom} className="p-2 rounded-md text-red-400 hover:bg-red-500/20 disabled:opacity-50"><TrashIcon/></button>
-                           </div>
-                       </div>
+                return (
+                     <div className="space-y-6">
                         <div>
-                            <label htmlFor="bg-image-url" className="block text-sm font-medium mb-2" style={{color: 'var(--color-text-primary)'}}>Background Image URL</label>
-                            <input id="bg-image-url" type="url" value={localAppearance.backgroundImage} onChange={(e) => setLocalAppearance(p => ({...p, backgroundImage: e.target.value}))} placeholder="https://..." className="w-full border rounded-lg p-3 placeholder-gray-500 focus:outline-none focus:ring-2" style={{ backgroundColor: 'var(--color-app-bg)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)', '--tw-ring-color': 'var(--color-accent)' } as React.CSSProperties} />
+                            <h4 className="text-lg font-semibold mb-3" style={{color: 'var(--color-text-primary)'}}>Theme</h4>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                                {allThemes.map(theme => (
+                                    <div key={theme.id} className="relative">
+                                        <button onClick={() => setLocalAppearance(prev => ({...prev, activeThemeId: theme.id}))} className={`w-full p-2 border-2 rounded-lg ${localAppearance.activeThemeId === theme.id ? '' : 'border-transparent'}`} style={{borderColor: localAppearance.activeThemeId === theme.id ? 'var(--color-accent)' : 'transparent'}}>
+                                            <div className="w-full aspect-video rounded-md flex items-center justify-center text-xs font-bold" style={{backgroundColor: theme.colors.panelBg, color: theme.colors.accentText, border: `1px solid ${theme.colors.border}`}}>
+                                                <div className="w-3 h-3 rounded-full" style={{backgroundColor: theme.colors.accent}}></div>
+                                            </div>
+                                            <p className="mt-2 text-sm font-medium text-center">{theme.name}</p>
+                                        </button>
+                                        {theme.isPro && !isPremiumUser && <div className="absolute top-1 right-1"><ProIcon/></div>}
+                                        {theme.isCustom && (
+                                             <div className="absolute top-1 right-1 flex gap-1">
+                                                <button onClick={() => handleOpenThemeEditor(theme)} className="p-1 bg-slate-800/80 rounded-full text-slate-300 hover:text-white"><PencilIcon /></button>
+                                                <button onClick={() => deleteCustomTheme(theme.id)} className="p-1 bg-slate-800/80 rounded-full text-slate-300 hover:text-red-400"><TrashIcon /></button>
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                             <button onClick={() => handleOpenThemeEditor()} className="mt-4 flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg" style={{backgroundColor: 'var(--color-accent)', color: 'var(--color-accent-text)'}}>
+                                <PlusIcon /> New Theme
+                            </button>
                         </div>
-                        <div>
-                            <label htmlFor="bg-opacity" className="block text-sm font-medium mb-2" style={{color: 'var(--color-text-primary)'}}>Background Opacity: <span className="font-mono">{localAppearance.backgroundOpacity}%</span></label>
-                            <input id="bg-opacity" type="range" min="0" max="100" step="5" value={localAppearance.backgroundOpacity} onChange={(e) => setLocalAppearance(p => ({...p, backgroundOpacity: parseInt(e.target.value, 10)}))} className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer"/>
+                        <div className="border-t pt-6" style={{borderColor: 'var(--color-border)'}}>
+                            <h4 className="text-lg font-semibold mb-3" style={{color: 'var(--color-text-primary)'}}>Deep Customization</h4>
+                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">UI Font</label>
+                                    <select value={localAppearance.customThemes.find(t=>t.id === localAppearance.activeThemeId)?.typography.fontFamily || THEME_OPTIONS[0].typography.fontFamily} onChange={e => console.log('Font change not implemented for custom themes yet')} className="w-full bg-black/20 border rounded-lg p-2 text-sm" style={{borderColor: 'var(--color-border)'}}>
+                                        {GOOGLE_FONTS.filter(f => f.type === 'ui').map(f => <option key={f.name} value={f.value}>{f.name}</option>)}
+                                    </select>
+                                </div>
+                                 <div>
+                                    <label className="block text-sm font-medium mb-2">Monospace Font</label>
+                                    <select className="w-full bg-black/20 border rounded-lg p-2 text-sm" style={{borderColor: 'var(--color-border)'}}>
+                                        {GOOGLE_FONTS.filter(f => f.type === 'monospace').map(f => <option key={f.name} value={f.value}>{f.name}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Border Radius</label>
+                                     <select className="w-full bg-black/20 border rounded-lg p-2 text-sm" style={{borderColor: 'var(--color-border)'}}>
+                                        {BORDER_RADIUS_OPTIONS.map(o => <option key={o.name} value={o.value}>{o.name}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Spacing</label>
+                                     <select className="w-full bg-black/20 border rounded-lg p-2 text-sm" style={{borderColor: 'var(--color-border)'}}>
+                                        {SPACING_OPTIONS.map(o => <option key={o.name} value={o.value}>{o.name}</option>)}
+                                    </select>
+                                </div>
+                             </div>
+                        </div>
+
+                        <div className="border-t pt-6" style={{borderColor: 'var(--color-border)'}}>
+                            <h4 className="text-lg font-semibold mb-3" style={{color: 'var(--color-text-primary)'}}>Background</h4>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label htmlFor="bgUrl" className="block text-sm font-medium mb-1">Image URL</label>
+                                    <input id="bgUrl" type="text" value={localAppearance.backgroundImage} onChange={e => setLocalAppearance({...localAppearance, backgroundImage: e.target.value})} placeholder="https://..." className="w-full bg-black/20 border rounded-lg p-2 text-sm" style={{borderColor: 'var(--color-border)'}}/>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-1">Opacity: <span className="font-mono">{localAppearance.backgroundOpacity}%</span></label>
+                                    <input type="range" min="0" max="100" value={localAppearance.backgroundOpacity} onChange={e => setLocalAppearance({...localAppearance, backgroundOpacity: parseInt(e.target.value)})} className="w-full"/>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 );
             case 'Interface':
-                return (
-                    <div>
-                         <h4 className="text-lg font-semibold mb-2" style={{color: 'var(--color-text-primary)'}}>UI Panels</h4>
-                         <div className="space-y-4">
-                            <div className="flex items-center justify-between p-3 rounded-lg" style={{backgroundColor: 'var(--color-app-bg)'}}>
-                                <label htmlFor="show-sidebar" className="font-medium">Show Left Panel (Chat History)</label>
-                                <button onClick={() => setLocalShowSidebar(v => !v)} className={`relative inline-flex items-center h-6 rounded-full w-11 transition-colors duration-300 ${localShowSidebar ? 'bg-violet-500' : 'bg-slate-600'}`}>
-                                    <span className={`inline-block w-4 h-4 transform bg-white rounded-full transition-transform duration-300 ${ localShowSidebar ? 'translate-x-6' : 'translate-x-1' }`} />
-                                </button>
+                 return (
+                     <div className="space-y-6">
+                        <div>
+                            <h4 className="text-lg font-semibold mb-3" style={{color: 'var(--color-text-primary)'}}>Layout</h4>
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between p-3 rounded-lg" style={{backgroundColor: 'var(--color-panel-bg)'}}>
+                                    <label htmlFor="show-main-sidebar" className="font-medium">Show Main Sidebar</label>
+                                    <input id="show-main-sidebar" type="checkbox" checked={localShowSidebar} onChange={e => setLocalShowSidebar(e.target.checked)} className="h-5 w-5 rounded text-violet-500 focus:ring-violet-500" style={{backgroundColor: 'var(--color-panel-bg)', borderColor: 'var(--color-border)'}}/>
+                                </div>
+                                 <div className="flex items-center justify-between p-3 rounded-lg" style={{backgroundColor: 'var(--color-panel-bg)'}}>
+                                    <label htmlFor="show-right-panel" className="font-medium">Show Skills & Dashboard Panel</label>
+                                    <input id="show-right-panel" type="checkbox" checked={localShowRightSidebar} onChange={e => setLocalShowRightSidebar(e.target.checked)} className="h-5 w-5 rounded text-violet-500 focus:ring-violet-500" style={{backgroundColor: 'var(--color-panel-bg)', borderColor: 'var(--color-border)'}}/>
+                                </div>
                             </div>
-                            <div className="flex items-center justify-between p-3 rounded-lg" style={{backgroundColor: 'var(--color-app-bg)'}}>
-                                <label htmlFor="show-tracker" className="font-medium">Show Right Panel</label>
-                                <button onClick={() => setLocalShowRightSidebar(v => !v)} className={`relative inline-flex items-center h-6 rounded-full w-11 transition-colors duration-300 ${localShowRightSidebar ? 'bg-violet-500' : 'bg-slate-600'}`}>
-                                    <span className={`inline-block w-4 h-4 transform bg-white rounded-full transition-transform duration-300 ${ localShowRightSidebar ? 'translate-x-6' : 'translate-x-1' }`} />
-                                </button>
-                            </div>
-                         </div>
+                        </div>
                     </div>
                 );
             case 'Advanced':
-                 return (
-                    <div className="space-y-6">
+                return (
+                     <div className="space-y-6">
                         <div>
-                            <div className="flex items-center mb-2">
-                                <h4 className="text-lg font-semibold" style={{color: 'var(--color-text-primary)'}}>Global Custom Instructions</h4>
-                            </div>
-                            <p className="text-sm mb-4" style={{color: 'var(--color-text-secondary)'}}>Provide instructions for the AI to follow in all conversations.</p>
-                            <textarea id="instruction" rows={5} value={localInstruction} onChange={(e) => setLocalInstruction(e.target.value)} placeholder="e.g., Always respond in Markdown. Be concise." className="w-full border rounded-lg p-3 placeholder-gray-500 focus:outline-none focus:ring-2" style={{ backgroundColor: 'var(--color-app-bg)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)', '--tw-ring-color': 'var(--color-accent)' } as React.CSSProperties} />
+                            <h4 className="text-lg font-semibold mb-2" style={{color: 'var(--color-text-primary)'}}>Custom CSS</h4>
+                            <p className="text-sm mb-4" style={{color: 'var(--color-text-secondary)'}}>Apply your own CSS rules to the application. Use with caution.</p>
+                             <textarea
+                                value={localAppearance.customCss}
+                                onChange={e => setLocalAppearance({...localAppearance, customCss: e.target.value})}
+                                rows={10}
+                                placeholder="/* Your custom CSS here */"
+                                className="w-full bg-black/20 border rounded-lg p-3 text-sm font-mono focus:ring-1"
+                                style={{borderColor: 'var(--color-border)', '--tw-ring-color': 'var(--color-accent)'} as React.CSSProperties}
+                            />
                         </div>
-                        <div>
-                            <div className="flex items-center mb-2">
-                                <h4 className="text-lg font-semibold" style={{color: 'var(--color-text-primary)'}}>Custom CSS</h4>
-                            </div>
-                            <p className="text-sm mb-4" style={{color: 'var(--color-text-secondary)'}}>Power user mode: inject your own CSS rules. Use with caution.</p>
-                            <textarea id="custom-css" rows={8} value={localAppearance.customCss} onChange={(e) => setLocalAppearance(p => ({...p, customCss: e.target.value}))} placeholder=".prose { font-size: 18px !important; }" className="w-full border rounded-lg p-3 placeholder-gray-500 focus:outline-none focus:ring-2 font-mono" style={{ backgroundColor: 'var(--color-app-bg)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)', '--tw-ring-color': 'var(--color-accent)' } as React.CSSProperties} />
+                        <div className="border-t pt-6" style={{borderColor: 'var(--color-border)'}}>
+                            <h4 className="text-lg font-semibold mb-2" style={{color: 'var(--color-text-primary)'}}>Tutorial</h4>
+                            <p className="text-sm mb-4" style={{color: 'var(--color-text-secondary)'}}>Replay the introductory tutorial to get a tour of MentorX's features.</p>
+                            <button onClick={() => { setIsSettingsOpen(false); startTutorial(); }} className="px-4 py-2 text-sm font-semibold rounded-lg" style={{backgroundColor: 'var(--color-accent)', color: 'var(--color-accent-text)'}}>
+                                Restart Tutorial
+                            </button>
                         </div>
                     </div>
-                 )
+                )
             default:
                 return null;
         }
     };
-    
-    const ThemeEditorModal = () => {
-        if (!isThemeEditorOpen || !editingTheme) return null;
-        
-        const updateColor = (key: keyof Theme['colors'], value: string) => {
-            setEditingTheme(t => t ? ({ ...t, colors: { ...t.colors, [key]: value } }) : null);
-        };
-        const updateTypography = (key: keyof Theme['typography'], value: string) => {
-            setEditingTheme(t => t ? ({ ...t, typography: { ...t.typography, [key]: value } }) : null);
-        };
-        const updateStyle = (key: keyof Theme['styles'], value: string) => {
-            setEditingTheme(t => t ? ({ ...t, styles: { ...t.styles, [key]: value } }) : null);
-        };
+// FIX: Added the main return statement for the Settings component JSX.
+return (
+    <div className="fixed inset-0 z-40 flex flex-col" style={{backgroundColor: 'var(--color-app-bg)'}}>
+        {/* Header */}
+        <header className="flex items-center justify-between p-4 border-b shrink-0" style={{borderColor: 'var(--color-border)'}}>
+            <h2 className="text-2xl font-bold" style={{color: 'var(--color-text-primary)'}}>Settings</h2>
+            <div className="flex items-center gap-2">
+                <button onClick={() => setIsSettingsOpen(false)} className="px-4 py-2 text-sm rounded-lg hover:bg-white/10">
+                    Cancel
+                </button>
+                <button
+                    onClick={handleSave}
+                    className="px-4 py-2 text-sm font-semibold rounded-lg"
+                    style={{backgroundColor: 'var(--color-accent)', color: 'var(--color-accent-text)'}}
+                >
+                    Save & Close
+                </button>
+            </div>
+        </header>
 
-        return (
-            <div className="fixed inset-0 bg-black/70 z-[60] flex items-center justify-center p-4" onClick={() => setIsThemeEditorOpen(false)}>
-                <div className="p-6 rounded-xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]" style={{backgroundColor: 'var(--color-panel-bg)', borderColor: 'var(--color-border)', border: '1px solid'}} onClick={e => e.stopPropagation()}>
-                    <h5 className="text-xl font-bold mb-4">{editingTheme.id ? "Edit" : "Create"} Theme</h5>
-                    <div className="flex-grow overflow-y-auto pr-4 -mr-4 space-y-4">
-                        <input type="text" value={editingTheme.name} onChange={e => setEditingTheme(t => t ? {...t, name: e.target.value} : null)} placeholder="Theme Name" className="w-full text-lg font-bold bg-transparent p-1 -ml-1 rounded-md focus:bg-black/20" />
-                        
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            {Object.entries(editingTheme.colors).map(([key, value]) => (
-                                <div key={key}>
-                                    <label className="text-sm capitalize">{key.replace(/([A-Z])/g, ' $1')}</label>
-                                    <div className="flex items-center gap-2 mt-1 border border-slate-600 rounded-md p-1">
-                                        <input type="color" value={value} onChange={e => updateColor(key as any, e.target.value)} className="w-8 h-8 rounded shrink-0 border-none bg-transparent" />
-                                        <input type="text" value={value} onChange={e => updateColor(key as any, e.target.value)} className="w-full bg-transparent text-sm font-mono" />
+        {/* Main Content */}
+        <div className="flex flex-1 min-h-0">
+            {/* Tabs Sidebar */}
+            <aside className="w-56 p-4 border-r shrink-0" style={{borderColor: 'var(--color-border)'}}>
+                <nav className="space-y-1">
+                    {TABS.map(tab => (
+                        <button
+                            key={tab}
+                            onClick={() => setActiveTab(tab)}
+                            className={`w-full text-left px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                                activeTab === tab ? 'text-white' : 'text-gray-400 hover:text-white'
+                            }`}
+                            style={{backgroundColor: activeTab === tab ? 'var(--color-accent-20)' : 'transparent'}}
+                        >
+                            {tab}
+                        </button>
+                    ))}
+                </nav>
+            </aside>
+
+            {/* Tab Panel */}
+            <main className="flex-1 p-6 overflow-y-auto">
+                {renderTabContent()}
+            </main>
+        </div>
+
+        {/* Persona Editor Modal */}
+        {isPersonaEditorOpen && editingPersona && (
+            <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+                <div className="bg-[#1F2937] border rounded-xl shadow-2xl w-full max-w-2xl" style={{borderColor: 'var(--color-border)'}} onClick={e => e.stopPropagation()}>
+                    <form onSubmit={handleSavePersona}>
+                        <div className="p-6">
+                            <h3 className="text-xl font-bold mb-4">{editingPersona.id ? 'Edit' : 'Create'} Persona</h3>
+                            <div className="space-y-4">
+                                <div>
+                                    <label htmlFor="persona-name" className="block text-sm font-medium mb-1">Name</label>
+                                    <input id="persona-name" type="text" value={editingPersona.name || ''} onChange={e => setEditingPersona({...editingPersona, name: e.target.value})} required className="w-full bg-[#111827] border border-slate-600 rounded-lg p-2 focus:ring-violet-500 focus:border-violet-500"/>
+                                </div>
+                                <div>
+                                    <label htmlFor="persona-desc" className="block text-sm font-medium mb-1">Slogan / Short Description</label>
+                                    <input id="persona-desc" type="text" value={editingPersona.description || ''} onChange={e => setEditingPersona({...editingPersona, description: e.target.value})} placeholder="e.g., Your expert on ancient history" className="w-full bg-[#111827] border border-slate-600 rounded-lg p-2 focus:ring-violet-500 focus:border-violet-500"/>
+                                </div>
+                                <div>
+                                    <label htmlFor="persona-prompt" className="block text-sm font-medium mb-1">System Prompt</label>
+                                    <textarea id="persona-prompt" rows={5} value={editingPersona.system_prompt_segment || ''} onChange={e => setEditingPersona({...editingPersona, system_prompt_segment: e.target.value})} required className="w-full bg-[#111827] border border-slate-600 rounded-lg p-2 focus:ring-violet-500 focus:border-violet-500"/>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Icon</label>
+                                    <div className="flex flex-wrap gap-2">
+                                        {CUSTOM_PERSONA_ICONS.map(icon => (
+                                            <button key={icon.id} type="button" onClick={() => setEditingPersona({...editingPersona, icon: icon.id})} className={`p-2 rounded-lg border-2 ${editingPersona.icon === icon.id ? 'border-violet-500' : 'border-transparent'}`}>
+                                                {icon.icon}
+                                            </button>
+                                        ))}
                                     </div>
                                 </div>
-                            ))}
-                        </div>
-                        
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <label className="text-sm">UI Font</label>
-                                <select value={editingTheme.typography.fontFamily} onChange={e => updateTypography('fontFamily', e.target.value)} className="w-full mt-1 bg-black/20 p-2 rounded-md border border-slate-600">
-                                    {GOOGLE_FONTS.filter(f=>f.type==='ui').map(f => <option key={f.name} value={f.value}>{f.name}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="text-sm">Code Font</label>
-                                <select value={editingTheme.typography.monospaceFontFamily} onChange={e => updateTypography('monospaceFontFamily', e.target.value)} className="w-full mt-1 bg-black/20 p-2 rounded-md border border-slate-600">
-                                    {GOOGLE_FONTS.filter(f=>f.type==='monospace').map(f => <option key={f.name} value={f.value}>{f.name}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="text-sm">Border Radius</label>
-                                <select value={editingTheme.styles.borderRadius} onChange={e => updateStyle('borderRadius', e.target.value)} className="w-full mt-1 bg-black/20 p-2 rounded-md border border-slate-600">
-                                    {BORDER_RADIUS_OPTIONS.map(o => <option key={o.name} value={o.value}>{o.name}</option>)}
-                                </select>
-                            </div>
-                             <div>
-                                <label className="text-sm">Spacing</label>
-                                <select value={editingTheme.styles.spacing} onChange={e => updateStyle('spacing', e.target.value)} className="w-full mt-1 bg-black/20 p-2 rounded-md border border-slate-600">
-                                    {SPACING_OPTIONS.map(o => <option key={o.name} value={o.value}>{o.name}</option>)}
-                                </select>
                             </div>
                         </div>
-
-                    </div>
-                    <div className="flex justify-end gap-3 pt-4">
-                        <button type="button" onClick={() => setIsThemeEditorOpen(false)} className="px-4 py-2 rounded-lg bg-black/20">Cancel</button>
-                        <button type="button" onClick={handleSaveTheme} className="px-4 py-2 rounded-lg" style={{backgroundColor: 'var(--color-accent)', color: 'var(--color-accent-text)'}}>Save Theme</button>
-                    </div>
-                </div>
-            </div>
-        );
-    }
-    
-    return (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setIsSettingsOpen(false)}>
-            <div className="bg-[#1F2937] border rounded-xl shadow-2xl w-full max-w-5xl relative flex flex-col max-h-[90vh]" style={{ backgroundColor: 'var(--color-panel-bg)', borderColor: 'var(--color-border)' }} onClick={e => e.stopPropagation()}>
-                <button onClick={() => setIsSettingsOpen(false)} className="absolute top-4 right-4 text-gray-400 hover:text-white z-10">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                </button>
-                <div className="p-6 border-b" style={{borderColor: 'var(--color-border)'}}>
-                    <h2 className="text-2xl font-bold" style={{color: 'var(--color-text-primary)'}}>Settings</h2>
-                </div>
-
-                <div className="flex-grow flex min-h-0">
-                    <aside className="w-48 p-4 border-r" style={{borderColor: 'var(--color-border)'}}>
-                        <nav className="space-y-1">
-                            {TABS.map(tab => (
-                                <button key={tab} onClick={() => setActiveTab(tab)} className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium ${activeTab === tab ? 'text-white' : 'text-gray-400 hover:text-white hover:bg-white/5'}`} style={{backgroundColor: activeTab === tab ? 'var(--color-accent-20)' : 'transparent'}}>
-                                    {tab}
-                                </button>
-                            ))}
-                        </nav>
-                    </aside>
-                    <main className="flex-1 p-6 overflow-y-auto">
-                        {renderTabContent()}
-                    </main>
-                </div>
-                
-                <div className="p-4 border-t flex justify-end gap-3 bg-black/10" style={{borderColor: 'var(--color-border)'}}>
-                    <button type="button" onClick={() => setIsSettingsOpen(false)} className="px-5 py-2.5 rounded-lg bg-black/20 text-white font-semibold hover:bg-black/30 transition-colors">Cancel</button>
-                    <button type="button" onClick={handleSave} className="px-6 py-2.5 rounded-lg font-semibold hover:opacity-90 transition-colors" style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-accent-text)' }}>Save Changes</button>
-                </div>
-            </div>
-            {isPersonaEditorOpen && (
-                <div className="fixed inset-0 bg-black/70 z-[60] flex items-center justify-center p-4" onClick={() => setIsPersonaEditorOpen(false)}>
-                    <form onSubmit={handleSavePersona} className="p-6 rounded-xl shadow-2xl w-full max-w-lg space-y-4" style={{backgroundColor: 'var(--color-panel-bg)', borderColor: 'var(--color-border)', border: '1px solid'}} onClick={e => e.stopPropagation()}>
-                        <h5 className="text-xl font-bold">{editingPersona?.id ? "Edit" : "Create"} Persona</h5>
-                        <div>
-                            <label htmlFor="p-name" className="text-sm font-medium">Name</label>
-                            <input id="p-name" type="text" value={editingPersona?.name} onChange={e => setEditingPersona(p => ({...p!, name: e.target.value}))} required className="w-full mt-1 bg-black/20 p-2 rounded-md border border-slate-600 focus:ring-violet-500"/>
-                        </div>
-                        <div>
-                            <label htmlFor="p-desc" className="text-sm font-medium">Description</label>
-                            <input id="p-desc" type="text" value={editingPersona?.description} onChange={e => setEditingPersona(p => ({...p!, description: e.target.value}))} className="w-full mt-1 bg-black/20 p-2 rounded-md border border-slate-600"/>
-                        </div>
-                         <div>
-                            <label htmlFor="p-prompt" className="text-sm font-medium">System Prompt</label>
-                            <textarea id="p-prompt" rows={4} value={editingPersona?.system_prompt_segment} onChange={e => setEditingPersona(p => ({...p!, system_prompt_segment: e.target.value}))} required className="w-full mt-1 bg-black/20 p-2 rounded-md border border-slate-600"/>
-                        </div>
-                        <div>
-                            <label className="text-sm font-medium">Icon</label>
-                            <div className="flex flex-wrap gap-2 mt-2">
-                                {CUSTOM_PERSONA_ICONS.map(i => (
-                                    <button type="button" key={i.id} onClick={() => setEditingPersona(p => ({...p!, icon: i.id}))} className={`p-2 rounded-full border-2 ${editingPersona?.icon === i.id ? 'border-violet-500' : 'border-transparent'}`}>{i.icon}</button>
-                                ))}
-                            </div>
-                        </div>
-                        <div className="flex justify-end gap-3 pt-4">
-                            <button type="button" onClick={() => setIsPersonaEditorOpen(false)} className="px-4 py-2 rounded-lg bg-black/20">Cancel</button>
-                            <button type="submit" className="px-4 py-2 rounded-lg" style={{backgroundColor: 'var(--color-accent)', color: 'var(--color-accent-text)'}}>Save Persona</button>
+                        <div className="p-4 bg-black/20 border-t flex justify-end gap-2" style={{borderColor: 'var(--color-border)'}}>
+                            <button type="button" onClick={() => setIsPersonaEditorOpen(false)} className="px-4 py-2 text-sm rounded-lg hover:bg-white/10">Cancel</button>
+                            <button type="submit" className="px-4 py-2 text-sm font-semibold rounded-lg" style={{backgroundColor: 'var(--color-accent)', color: 'var(--color-accent-text)'}}>Save Persona</button>
                         </div>
                     </form>
                 </div>
-            )}
-            <ThemeEditorModal />
-        </div>
-    );
+            </div>
+        )}
+        
+        {/* Theme Editor Modal */}
+        {isThemeEditorOpen && editingTheme && (
+             <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+                <div className="bg-[#1F2937] border rounded-xl shadow-2xl w-full max-w-4xl" style={{borderColor: 'var(--color-border)'}} onClick={e => e.stopPropagation()}>
+                    <div className="p-6 border-b" style={{borderColor: 'var(--color-border)'}}>
+                        <h3 className="text-xl font-bold">{editingTheme.id ? 'Edit' : 'Create'} Theme</h3>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2">
+                        <div className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium mb-1">Theme Name</label>
+                                <input type="text" value={editingTheme.name} onChange={e => setEditingTheme({...editingTheme, name: e.target.value})} className="w-full bg-[#111827] border border-slate-600 rounded-lg p-2 focus:ring-violet-500 focus:border-violet-500" />
+                            </div>
+                            <h4 className="text-md font-semibold pt-2">Colors</h4>
+                            <div className="grid grid-cols-2 gap-4">
+                                {Object.entries(editingTheme.colors).map(([key, value]) => (
+                                    <div key={key}>
+                                        <label className="block text-xs font-medium capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</label>
+                                        <div className="flex items-center gap-2 mt-1">
+                                            <input type="color" value={value} onChange={e => setEditingTheme({...editingTheme, colors: {...editingTheme.colors, [key]: e.target.value}})} className="h-8 w-8 p-0 border-none rounded cursor-pointer bg-transparent" />
+                                            <input type="text" value={value} onChange={e => setEditingTheme({...editingTheme, colors: {...editingTheme.colors, [key]: e.target.value}})} className="w-full bg-[#111827] border border-slate-600 rounded-md p-1 text-xs" />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="p-6 bg-black/20">
+                            <h4 className="text-md font-semibold mb-4">Preview</h4>
+                            <div className="p-4 rounded-lg" style={{backgroundColor: editingTheme.colors.appBg, border: `1px solid ${editingTheme.colors.border}`}}>
+                                <div className="p-4 rounded-md" style={{backgroundColor: editingTheme.colors.panelBg}}>
+                                    <h5 className="font-bold" style={{color: editingTheme.colors.textPrimary}}>Primary Text</h5>
+                                    <p className="text-sm" style={{color: editingTheme.colors.textSecondary}}>Secondary text for descriptions.</p>
+                                    <button className="px-3 py-1 mt-2 text-sm font-semibold rounded" style={{backgroundColor: editingTheme.colors.accent, color: editingTheme.colors.accentText}}>Accent Button</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="p-4 bg-black/20 border-t flex justify-end gap-2" style={{borderColor: 'var(--color-border)'}}>
+                        <button type="button" onClick={() => setIsThemeEditorOpen(false)} className="px-4 py-2 text-sm rounded-lg hover:bg-white/10">Cancel</button>
+                        <button type="button" onClick={handleSaveTheme} className="px-4 py-2 text-sm font-semibold rounded-lg" style={{backgroundColor: 'var(--color-accent)', color: 'var(--color-accent-text)'}}>Save Theme</button>
+                    </div>
+                </div>
+            </div>
+        )}
+    </div>
+);
 };
-
-export default Settings;

@@ -105,6 +105,7 @@ const RightPanel: React.FC = () => {
 
   return (
     <aside 
+        data-tutorial-id="skill-matrix"
         className="w-80 p-4 hidden lg:flex flex-col shrink-0 border-l"
         style={{ backgroundColor: theme.colors.panelBg, borderColor: theme.colors.border }}
     >

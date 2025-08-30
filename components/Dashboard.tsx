@@ -18,7 +18,7 @@ const Dashboard: React.FC = () => {
                 Welcome{user ? `, ${user.name.split(' ')[0]}` : ''}!
             </h1>
             <p className="text-lg mb-8" style={{ color: theme.colors.textSecondary }}>How can I help you today?</p>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-w-5xl w-full">
+            <div data-tutorial-id="persona-cards" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-w-5xl w-full">
               {launchablePersonas.map((persona) => {
                   const isLocked = persona.isPro && !isPremiumUser;
                   return (

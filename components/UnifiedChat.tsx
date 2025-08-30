@@ -231,7 +231,7 @@ const UnifiedChat: React.FC = () => {
                     </div>
                     <h2 className="text-lg sm:text-xl font-bold tracking-wide" style={{ color: theme.colors.textPrimary }}>{activePersona.name}</h2>
                 </div>
-                <div className="flex items-center space-x-1 sm:space-x-2 flex-wrap justify-end">
+                <div data-tutorial-id="chat-header-toggles" className="flex items-center space-x-1 sm:space-x-2 flex-wrap justify-end">
                 <div className="w-px h-6 bg-slate-700 hidden sm:block"></div>
                 {/* Deep Analysis Toggle */}
                 <div className="flex items-center gap-2 relative group" title="Deep Analysis provides more detailed, expert-level responses.">
@@ -312,7 +312,7 @@ const UnifiedChat: React.FC = () => {
                 </div>
             </div>
 
-            <div className="p-2 md:p-6 border-t" style={{borderColor: theme.colors.border}}>
+            <div data-tutorial-id="prompt-bar" className="p-2 md:p-6 border-t" style={{borderColor: theme.colors.border}}>
                 <div className="rounded-lg p-2" style={{backgroundColor: theme.colors.panelBg}}>
                     <div className="flex flex-wrap items-start gap-2">
                          <AttachmentPreview />

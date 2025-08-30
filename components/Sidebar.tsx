@@ -307,6 +307,7 @@ const Sidebar: React.FC = () => {
         <div className="px-2 sm:px-0">
           <button
               onClick={handleNewChatClick}
+              data-tutorial-id="new-chat-button"
               className={`flex items-center justify-center w-full p-3 mb-4 rounded-lg hover:opacity-90 transition-all duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2`}
                style={{ 
                    backgroundColor: 'var(--color-accent)', 
@@ -353,7 +354,7 @@ const Sidebar: React.FC = () => {
               </div>
               {!isSidebarCollapsed && <kbd className="font-sans text-xs border rounded-md px-1.5 py-0.5" style={{borderColor: 'var(--color-border)'}}>Ctrl+K</kbd>}
             </button>
-            <button onClick={() => setIsSettingsOpen(true)} className="w-full flex items-center p-2 rounded-lg text-sm transition-colors" style={{ color: 'var(--color-text-secondary)' }}>
+            <button data-tutorial-id="settings-button" onClick={() => setIsSettingsOpen(true)} className="w-full flex items-center p-2 rounded-lg text-sm transition-colors" style={{ color: 'var(--color-text-secondary)' }}>
               <SettingsIcon />
               {!isSidebarCollapsed && <span className="ml-2">Settings</span>}
             </button>

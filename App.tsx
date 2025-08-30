@@ -8,6 +8,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import CommandPalette from './components/CommandPalette';
 import { Settings } from './components/Settings';
 import Dashboard from './components/Dashboard';
+import Tutorial from './components/Tutorial';
 
 const DynamicStyles = () => {
     const { theme, appearanceSettings } = useMentorX();
@@ -67,6 +68,7 @@ const ThemedApp: React.FC = () => {
       isFocusMode,
       activeSession,
       isUserDataLoading,
+      isTutorialActive,
   } = useMentorX();
 
   useEffect(() => {
@@ -138,6 +140,7 @@ const ThemedApp: React.FC = () => {
         </div>
       </div>
       {isCommandPaletteOpen && <CommandPalette />}
+      {isTutorialActive && <Tutorial />}
     </>
   );
 }

@@ -261,6 +261,12 @@ export interface IMentorXContext {
   dashboardWidgetIds: string[];
   user: User | null;
   isUserDataLoading: boolean;
+  isTutorialActive: boolean;
+  tutorialStep: number;
+  startTutorial: () => void;
+  nextTutorialStep: () => void;
+  prevTutorialStep: () => void;
+  endTutorial: () => void;
   login: (credential: string) => void;
   logout: () => void;
   addWidgetToDashboard: (widgetId: string) => void;
