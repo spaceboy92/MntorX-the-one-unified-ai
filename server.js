@@ -1,9 +1,14 @@
 import express from 'express';
 import { GoogleGenAI, Type } from "@google/genai";
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 // --- SERVER SETUP ---
 const app = express();
 const port = process.env.PORT || 3000;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 
 // --- CORS MIDDLEWARE ---
 // This is crucial for allowing your frontend (hosted on a different domain like GitHub Pages)
@@ -22,6 +27,11 @@ app.use((req, res, next) => {
 });
 
 app.use(express.json({ limit: '50mb' }));
+
+// --- SERVE STATIC FILES ---
+// This serves all the frontend files (index.html, index.tsx, etc.) from the root directory.
+app.use(express.static(path.join(__dirname, '.')));
+
 
 // --- RESILIENT GEMINI API SETUP ---
 // This setup allows the server to run even if the API_KEY is missing.
@@ -225,19 +235,13 @@ app.post('/api/classify-intent', async (req, res) => {
 });
 
 
-// Add a root route to confirm the API server is running
-app.get('/', (req, res) => {
-    res.setHeader('Content-Type', 'text/html');
-    res.send(`
-        <body style="font-family: sans-serif; background-color: #111827; color: #F9FAFB; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0;">
-            <div style="text-align: center;">
-                <h1 style="color: #8B5CF6; font-size: 2.5rem;">MentorX Backend</h1>
-                <p style="font-size: 1.2rem;">API server is up and running.</p>
-                <p style="color: #9CA3AF;">This is the backend service for the MentorX application. Please visit the frontend URL to use the app.</p>
-            </div>
-        </body>
-    `);
+// --- CATCH-ALL ROUTE ---
+// This serves the index.html for any request that doesn't match an API route or a static file.
+// It's essential for single-page applications.
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
 });
+
 
 // --- START SERVER ---
 app.listen(port, () => {
