@@ -1,20 +1,40 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Aether IDE
 
-# Run and deploy your AI Studio app
+Aether IDE is a production-oriented prototype of a universal AI development environment. It combines a Python-first orchestration backend with a modern desktop-ready frontend shell.
 
-This contains everything you need to run your app locally.
+## What is included
 
-View your app in AI Studio: https://ai.studio/apps/drive/1rtZkVQmaWk7fiR0XrtHyxnUc8Z45fCVi
+- A runnable glassmorphism IDE shell with file explorer, smart editor, live preview, terminal, build matrix, and multi-agent board.
+- Python backend scaffolding for FastAPI orchestration, async multi-agent collaboration, project generation, sandbox execution, and security scanning.
+- Tests for the orchestrator, project generator, and security scanner.
+- Architecture documentation in [`docs/AETHER_IDE.md`](docs/AETHER_IDE.md).
 
-## Run Locally
+## Run the frontend
 
-**Prerequisites:**  Node.js
+```bash
+npm install
+npm run dev
+```
 
+## Build
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+```bash
+npm run build
+```
+
+## Test backend modules
+
+```bash
+python3 -m pytest aether_ide/tests
+```
+
+## Run the backend API
+
+Install backend dependencies first:
+
+```bash
+python3 -m pip install fastapi uvicorn pydantic
+uvicorn aether_ide.backend.main:app --reload
+```
+
+Then open `http://localhost:8000/health`.

@@ -1,12 +1,14 @@
 {
   "name": "mentorx-backend-app",
   "version": "1.0.0",
-  "description": "Backend server for MentorX to securely handle Gemini API calls.",
+  "description": "Aether IDE desktop-grade AI development environment prototype.",
   "main": "server.js",
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "test": "npm run build"
   },
   "keywords": [
     "gemini",
@@ -17,6 +19,19 @@
   "license": "ISC",
   "dependencies": {
     "@google/genai": "^1.8.0",
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "@vitejs/plugin-react": "^4.3.1",
+    "vite": "^5.4.0",
+    "typescript": "^5.5.4",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "firebase": "^10.12.2",
+    "react-window": "^1.8.10",
+    "react-virtualized-auto-sizer": "^1.0.24"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "@types/react": "^18.2.66",
+    "@types/react-dom": "^18.2.22"
   }
 }
