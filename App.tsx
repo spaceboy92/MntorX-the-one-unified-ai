@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo } from 'react';
+import AetherIDE from './components/AetherIDE';
 import Sidebar from './components/Sidebar';
 import ChatWindow from './components/ChatWindow';
 import { MentorXProvider } from './context/NexusAIContext';
@@ -56,7 +57,7 @@ const DynamicStyles = () => {
     );
 };
 
-const ThemedApp: React.FC = () => {
+const LegacyMentorXApp: React.FC = () => {
   const { 
       theme,
       appearanceSettings,
@@ -149,7 +150,7 @@ const App: React.FC = () => {
   return (
     <MentorXProvider>
       <ErrorBoundary>
-        <ThemedApp />
+        <AetherIDE />
       </ErrorBoundary>
     </MentorXProvider>
   );
